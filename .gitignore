@@ -1,0 +1,15 @@
+.env.*
+!.env
+
+# Android
+android/.gradle/
+android/local.properties
+android/*/build/
+android/build/
+android/.idea/
+android/*.iml
+
+# ML pipeline
+ml/data/
+ml/.venv/
+ml/__pycache__/

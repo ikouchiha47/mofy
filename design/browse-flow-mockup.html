@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mofy — App Flow Mockup</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --surface: #1a1a1d;
+    --surface-2: #232327;
+    --surface-3: #2b2b30;
+    --border: #2e2e33;
+    --text: #f2f2f2;
+    --text-dim: #9a9aa2;
+    --accent: #e94560;
+    --accent-2: #4ea1ff;
+    --good: #3ecf8e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: #050506;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 40px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    justify-content: center;
+  }
+  .frame-label {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .frame-label b { color: var(--text); }
+  .frame-wrap { display: flex; flex-direction: column; align-items: center; }
+  .phone {
+    width: 300px;
+    height: 640px;
+    background: var(--bg);
+    border-radius: 28px;
+    border: 6px solid #000;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+  }
+  .statusbar {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .topbar {
+    padding: 6px 16px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar h1 { font-size: 19px; margin: 0; }
+  .topbar .sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .topbar .back { display: flex; align-items: center; gap: 10px; }
+  .topbar .back .arrow { font-size: 18px; color: var(--text-dim); }
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .content { flex: 1; overflow-y: auto; }
+  .content.padded { padding: 16px; }
+
+  /* Bottom nav */
+  .bottom-nav {
+    flex-shrink: 0;
+    display: flex;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 8px 4px 10px;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+  .nav-item .nav-icon { font-size: 18px; }
+  .nav-item.active { color: var(--accent-2); }
+
+  /* Home: Netflix-style rows */
+  .row-block { padding: 16px 0; }
+  .row-heading {
+    font-size: 14px;
+    font-weight: 700;
+    padding: 0 16px 10px;
+  }
+  .poster-row {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 0 16px;
+  }
+  .poster-card {
+    width: 96px;
+    flex-shrink: 0;
+  }
+  .poster-art {
+    width: 96px; height: 136px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #3a3a42, #1c1c1f);
+    position: relative;
+    overflow: hidden;
+  }
+  .poster-art .progress {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 3px;
+    background: rgba(255,255,255,0.15);
+  }
+  .poster-art .progress i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+  .poster-title { font-size: 11px; margin-top: 6px; font-weight: 600; }
+  .poster-sub { font-size: 10px; color: var(--text-dim); }
+  .continue-card {
+    display: flex;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  /* Browse: segmented control */
+  .segmented {
+    display: flex;
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 3px;
+    margin: 12px 16px 4px;
+  }
+  .segmented .seg {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    color: var(--text-dim);
+  }
+  .segmented .seg.active {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .site-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .site-favicon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: var(--accent-2);
+    flex-shrink: 0;
+  }
+  .site-name { font-size: 14px; font-weight: 600; }
+  .site-url { font-size: 11px; color: var(--text-dim); }
+  .site-info { flex: 1; min-width: 0; }
+  .site-trailing { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .chevron { color: var(--text-dim); }
+
+  /* WebView mock */
+  .webview-chrome {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .webview-chrome .backbtn { font-size: 16px; color: var(--text-dim); }
+  .webview-chrome .url {
+    flex: 1;
+    background: var(--surface-2);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .webview-chrome .shield { font-size: 15px; color: var(--good); }
+  .page-mock {
+    flex: 1;
+    background: #f4f4f4;
+    color: #111;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .movie-poster-block { display: flex; gap: 10px; margin-bottom: 10px; }
+  .poster-thumb {
+    width: 70px; height: 100px;
+    background: linear-gradient(135deg, #444, #222);
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .movie-title-year { font-size: 15px; font-weight: 800; margin: 0 0 4px; }
+  .movie-meta { font-size: 10px; color: #666; line-height: 1.5; }
+  .fake-ad-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 210, 0, 0.94);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    font-weight: 800;
+    font-size: 13px;
+    color: #402d00;
+    border: 4px dashed #402d00;
+  }
+  .fake-ad-overlay .strike-badge {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: var(--accent);
+    color: white;
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-weight: 700;
+  }
+  .magnet-row {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+  }
+  .magnet-row .m-icon { color: var(--accent-2); font-size: 14px; }
+  .magnet-row .m-label { font-size: 11px; font-weight: 700; color: #222; }
+  .detect-toast {
+    position: absolute;
+    left: 10px; right: 10px; bottom: 10px;
+    background: rgba(20,20,22,0.95);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+  }
+  .detect-toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+  .detect-toast .txt { font-size: 11px; flex: 1; }
+  .detect-toast .txt b { display: block; font-size: 12px; }
+
+  /* Confirm match */
+  .extracted-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .extracted-banner b { color: var(--text); font-size: 14px; display: block; margin-bottom: 2px; }
+  .extracted-banner .pill {
+    display: inline-block;
+    margin-top: 6px;
+    background: var(--surface-2);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 10px;
+    color: var(--accent-2);
+  }
+  .result-card {
+    display: flex;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .result-card.selected { border-color: var(--good); }
+  .result-poster {
+    width: 54px; height: 78px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #3a3a40, #1c1c1f);
+    flex-shrink: 0;
+  }
+  .result-info { flex: 1; min-width: 0; }
+  .result-title { font-size: 14px; font-weight: 700; }
+  .result-year { font-size: 11px; color: var(--text-dim); }
+  .result-overview {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .confirm-btn {
+    margin-top: 4px;
+    width: 100%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .arrow-between {
+    display: flex;
+    align-items: center;
+    color: var(--text-dim);
+    font-size: 22px;
+    margin-top: 300px;
+  }
+
+  /* Title detail */
+  .backdrop {
+    height: 220px;
+    background: linear-gradient(180deg, rgba(14,14,16,0) 0%, var(--bg) 92%),
+                linear-gradient(135deg, #4a3a4e, #1c1c1f);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .backdrop .backbtn-float {
+    position: absolute;
+    top: 10px; left: 10px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .detail-title { font-size: 21px; font-weight: 800; padding: 0 16px; margin: 0; }
+  .detail-meta { font-size: 12px; color: var(--text-dim); padding: 4px 16px 0; }
+  .chip-row { display: flex; gap: 6px; padding: 10px 16px 0; flex-wrap: wrap; }
+  .chip {
+    font-size: 10px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+  .detail-overview {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    padding: 12px 16px 0;
+  }
+  .action-row {
+    display: flex;
+    gap: 10px;
+    padding: 16px;
+  }
+  .btn-primary {
+    flex: 1;
+    background: var(--text);
+    color: #101012;
+    border: none;
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-secondary {
+    flex: 1;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .feedback-row { display: flex; gap: 10px; padding: 0 16px 16px; }
+  .feedback-row .icon-btn { background: var(--surface-2); }
+
+  /* Create room */
+  .room-code-block {
+    text-align: center;
+    padding: 24px 16px 8px;
+  }
+  .room-code-label { font-size: 12px; color: var(--text-dim); }
+  .room-code {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    margin-top: 6px;
+    color: var(--accent-2);
+  }
+  .qr-mock {
+    width: 140px; height: 140px;
+    margin: 20px auto;
+    background: #fff;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px;
+  }
+  .qr-grid {
+    width: 100%; height: 100%;
+    background-image:
+      repeating-linear-gradient(0deg, #111 0 6px, transparent 6px 12px),
+      repeating-linear-gradient(90deg, #111 0 6px, transparent 6px 12px);
+    background-blend-mode: multiply;
+    opacity: 0.88;
+  }
+  .waiting-row {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 4px 16px 20px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .waiting-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-2);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 0.3 } 50% { opacity: 1 } }
+  .share-btn {
+    margin: 0 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Player */
+  .player-frame {
+    flex: 1;
+    background: #000;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .player-video {
+    flex: 1;
+    background: linear-gradient(135deg, #26262b, #0c0c0d);
+  }
+  .player-top {
+    position: absolute;
+    top: 12px; left: 12px; right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .watching-with-pill {
+    background: rgba(20,20,22,0.85);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 11px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .watching-with-pill .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+  }
+  .player-controls {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 14px 16px 18px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85), transparent);
+  }
+  .seek-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .seek-time { font-size: 10px; color: var(--text-dim); }
+  .seek-bar {
+    flex: 1; height: 3px; border-radius: 2px;
+    background: rgba(255,255,255,0.25);
+    position: relative;
+  }
+  .seek-bar i {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 42%; background: var(--accent); border-radius: 2px;
+  }
+  .transport-row {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .transport-row .controls-left { display: flex; gap: 18px; align-items: center; font-size: 20px; }
+  .transport-row .invite-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(78,161,255,0.2);
+    border: 1px solid var(--accent-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+
+  /* Join session sheet */
+  .sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: flex-end;
+  }
+  .sheet {
+    width: 100%;
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    padding: 18px 16px 22px;
+    border-top: 1px solid var(--border);
+  }
+  .sheet-handle {
+    width: 36px; height: 4px; border-radius: 4px;
+    background: var(--surface-3);
+    margin: 0 auto 14px;
+  }
+  .sheet h2 { font-size: 16px; margin: 0 0 4px; }
+  .sheet .sub { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+  .code-input {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .code-input .digit {
+    flex: 1;
+    aspect-ratio: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700;
+  }
+  .code-input .digit.filled { border-color: var(--accent-2); color: var(--accent-2); }
+  .divider-or {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin: 12px 0;
+  }
+
+  /* Add/Edit site form */
+  .form-field { padding: 12px 16px 0; }
+  .form-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: block; }
+  .form-input {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .form-input.mono { font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; }
+  .form-actions { display: flex; gap: 10px; padding: 20px 16px 0; }
+  .btn-danger {
+    flex: 1;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .edit-icon { color: var(--text-dim); font-size: 15px; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+  <div class="frame-wrap">
+    <div class="frame-label">1 · <b>Home</b> tab — Netflix-style rows</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar">
+        <div><h1>Mofy</h1></div>
+        <div style="display:flex; gap:8px;">
+          <div class="icon-btn" title="Join a Watch Together session">👥</div>
+          <div class="icon-btn">🔍</div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="row-block">
+          <div class="row-heading">Continue Watching</div>
+          <div class="poster-row">
+            <div class="poster-card">
+              <div class="poster-art"><div class="progress"><i style="width:64%"></i></div></div>
+              <div class="poster-title">The Bear</div>
+              <div class="poster-sub">S2 E4 · 12m left</div>
+            </div>
+            <div class="poster-card">
+              <div class="poster-art"><div class="progress"><i style="width:30%"></i></div></div>
+              <div class="poster-title">Dune</div>
+              <div class="poster-sub">41m left</div>
+            </div>
+          </div>
+        </div>
+        <div class="row-block">
+          <div class="row-heading">Recommended for you</div>
+          <div class="poster-row">
+            <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Memento</div><div class="poster-sub">Thriller · 2000</div></div>
+            <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Arrival</div><div class="poster-sub">Sci-Fi · 2016</div></div>
+            <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Se7en</div><div class="poster-sub">Thriller · 1995</div></div>
+          </div>
+        </div>
+        <div class="row-block">
+          <div class="row-heading">Recently Added</div>
+          <div class="poster-row">
+            <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Jack Reacher</div><div class="poster-sub">Action · 2012</div></div>
+            <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Whiplash</div><div class="poster-sub">Drama · 2014</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+        <div class="nav-item"><div class="nav-icon">🧭</div>Browse</div>
+        <div class="nav-item"><div class="nav-icon">📚</div>Library</div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div>Settings</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">2 · <b>Browse</b> tab — category is a segmented control</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar"><div><h1>Browse</h1><div class="sub">Torrent sites</div></div></div>
+      <div class="segmented">
+        <div class="seg active">Movies</div>
+        <div class="seg">TV Shows</div>
+      </div>
+      <div class="content" style="padding-top:8px">
+        <div class="site-row">
+          <div class="site-favicon">YT</div>
+          <div class="site-info"><div class="site-name">YTS</div><div class="site-url">yts.vg</div></div>
+          <div class="site-trailing">
+            <span class="edit-icon">✏️</span>
+            <div class="chevron">›</div>
+          </div>
+        </div>
+        <div class="site-row" style="opacity:.7">
+          <div class="site-favicon">+</div>
+          <div class="site-info"><div class="site-name">Add a site…</div><div class="site-url">opens the same edit form</div></div>
+        </div>
+      </div>
+      <div class="bottom-nav">
+        <div class="nav-item"><div class="nav-icon">🏠</div>Home</div>
+        <div class="nav-item active"><div class="nav-icon">🧭</div>Browse</div>
+        <div class="nav-item"><div class="nav-icon">📚</div>Library</div>
+        <div class="nav-item"><div class="nav-icon">⚙️</div>Settings</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">3 · WebView — pushed screen, no bottom nav</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="webview-chrome">
+        <span class="backbtn">←</span>
+        <span class="shield">🛡️</span>
+        <div class="url">yts.vg/movies/jack-reacher-2012</div>
+      </div>
+      <div class="page-mock">
+        <div class="movie-poster-block">
+          <div class="poster-thumb"></div>
+          <div>
+            <p class="movie-title-year">Jack Reacher (2012)</p>
+            <div class="movie-meta">Action / Thriller<br>Torrent · 1080p BluRay<br>2.1 GB · 3,204 seeds</div>
+          </div>
+        </div>
+        <div class="magnet-row">
+          <span class="m-icon">🧲</span>
+          <span class="m-label">magnet:?xt=urn:btih:...</span>
+        </div>
+        <div class="fake-ad-overlay">
+          <span class="strike-badge">BLOCKED</span>
+          🎉 YOU WON A FREE PHONE!! popup / window.open() ad overlay — never rendered
+        </div>
+        <div class="detect-toast">
+          <span class="dot"></span>
+          <span class="txt"><b>Detected: Jack Reacher</b>auto-extracted via CSS selector on page load</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">4 · Confirm Match — pushed on magnet tap, no bottom nav</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar"><div class="back"><span class="arrow">←</span><div><h1 style="font-size:17px">Confirm Match</h1><div class="sub">Magnet link captured</div></div></div></div>
+      <div class="content padded">
+        <div class="extracted-banner">
+          Extracted from page:
+          <b>"Jack Reacher"</b>
+          <span class="pill">searching movies ▸ category locked</span>
+        </div>
+        <div class="result-card selected">
+          <div class="result-poster"></div>
+          <div class="result-info">
+            <div class="result-title">Jack Reacher</div>
+            <div class="result-year">2012</div>
+            <div class="result-overview">Five people are shot dead in a seemingly random attack. All evidence points to an ex-military sniper...</div>
+          </div>
+        </div>
+        <div class="result-card">
+          <div class="result-poster"></div>
+          <div class="result-info">
+            <div class="result-title">Jack Reacher: Never Go Back</div>
+            <div class="result-year">2016</div>
+            <div class="result-overview">Reacher is drawn back into the life he left behind when his friend Major Susan Turner is framed...</div>
+          </div>
+        </div>
+        <button class="confirm-btn">Confirm &amp; Start Download</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">5 · Title Detail — reached from any poster card</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="backdrop"><div class="backbtn-float">←</div></div>
+      <div class="content padded" style="padding-top:0">
+        <h2 class="detail-title">Jack Reacher</h2>
+        <div class="detail-meta">2012 · 2h 10m · ★ 6.7</div>
+        <div class="chip-row"><span class="chip">Action</span><span class="chip">Thriller</span><span class="chip">Crime</span></div>
+        <p class="detail-overview">Five people are shot dead in a seemingly random attack. All evidence points to a single suspect: an ex-military sniper who is quickly brought into custody...</p>
+        <div class="action-row">
+          <button class="btn-primary">▶ Play</button>
+          <button class="btn-secondary">👥 Watch Together</button>
+        </div>
+        <div class="feedback-row">
+          <div class="icon-btn">👍</div>
+          <div class="icon-btn">🔥</div>
+          <div class="icon-btn">👎</div>
+          <div class="icon-btn" style="margin-left:auto">📋</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">6 · Create Room — after tapping "Watch Together"</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar"><div class="back"><span class="arrow">←</span><div><h1 style="font-size:17px">Watch Together</h1><div class="sub">Jack Reacher</div></div></div></div>
+      <div class="content">
+        <div class="room-code-block">
+          <div class="room-code-label">Room code</div>
+          <div class="room-code">7F K9 Q2</div>
+        </div>
+        <div class="qr-mock"><div class="qr-grid"></div></div>
+        <div class="waiting-row"><span class="waiting-dot"></span> Waiting for someone to join…</div>
+        <div class="share-btn">🔗 Share Link</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">7 · Player — active session, invite/connected state</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="player-frame">
+        <div class="player-video"></div>
+        <div class="player-top">
+          <div class="icon-btn" style="background:rgba(0,0,0,0.5)">←</div>
+          <div class="watching-with-pill"><span class="live-dot"></span> Watching with Priya</div>
+        </div>
+        <div class="player-controls">
+          <div class="seek-row">
+            <span class="seek-time">42:10</span>
+            <div class="seek-bar"><i></i></div>
+            <span class="seek-time">1:52:00</span>
+          </div>
+          <div class="transport-row">
+            <div class="controls-left">⏪ ⏸ ⏩</div>
+            <div class="invite-btn">👥</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">8 · Join Session — sheet from Home's 👥 icon</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar"><div><h1>Mofy</h1></div><div class="icon-btn">🔍</div></div>
+      <div style="flex:1; position: relative;">
+        <div class="sheet-backdrop">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <h2>Join Watch Together</h2>
+            <div class="sub">Enter the code you were sent</div>
+            <div class="code-input">
+              <div class="digit filled">7</div>
+              <div class="digit filled">F</div>
+              <div class="digit filled">K</div>
+              <div class="digit">9</div>
+              <div class="digit">Q</div>
+              <div class="digit">2</div>
+            </div>
+            <button class="btn-primary" style="width:100%">Join</button>
+            <div class="divider-or">or</div>
+            <div class="share-btn">▢ Scan QR Code</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">9 · Edit Site — from the ✏️ on any Browse row (or "Add a site")</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar"><div class="back"><span class="arrow">←</span><div><h1 style="font-size:17px">Edit Site</h1></div></div></div>
+      <div class="content" style="padding-bottom:16px">
+        <div class="form-field">
+          <label class="form-label">Name</label>
+          <div class="form-input">YTS</div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Base URL</label>
+          <div class="form-input mono">https://yts.vg/</div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Category</label>
+          <div class="segmented" style="margin:0">
+            <div class="seg active">Movies</div>
+            <div class="seg">TV Shows</div>
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Title CSS selector</label>
+          <div class="form-input mono">.right-details-box .title-year h1</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-danger">Delete</button>
+          <button class="btn-primary" style="flex:2">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+    <div class="frame-label">10 · Search — from Home's 🔍 icon: mood/plot text + genre chips</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+      <div class="topbar"><div class="back"><span class="arrow">←</span><div><h1 style="font-size:17px">Search</h1></div></div></div>
+      <div class="content padded">
+        <div class="form-field" style="padding:0 0 12px">
+          <div class="form-input" style="color:var(--text-dim)">"feeling nostalgic" or describe a plot…</div>
+        </div>
+        <div class="chip-row" style="padding:0 0 14px">
+          <span class="chip" style="background:var(--surface-3); color:var(--text)">Thriller</span>
+          <span class="chip">Comedy</span>
+          <span class="chip">Sci-Fi</span>
+          <span class="chip">Drama</span>
+          <span class="chip">Horror</span>
+          <span class="chip">Romance</span>
+        </div>
+        <div class="row-heading" style="padding:0 0 10px">Results</div>
+        <div class="result-card">
+          <div class="result-poster"></div>
+          <div class="result-info">
+            <div class="result-title">Memento</div>
+            <div class="result-year">2000 · Thriller</div>
+            <div class="result-overview">A man with short-term memory loss uses notes and tattoos to hunt for his wife's killer...</div>
+          </div>
+        </div>
+        <div class="result-card">
+          <div class="result-poster"></div>
+          <div class="result-info">
+            <div class="result-title">Arrival</div>
+            <div class="result-year">2016 · Sci-Fi</div>
+            <div class="result-overview">A linguist is recruited to communicate with alien visitors after twelve mysterious spacecraft...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
+</content>

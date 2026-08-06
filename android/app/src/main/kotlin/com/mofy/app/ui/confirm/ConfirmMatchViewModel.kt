@@ -13,15 +13,21 @@ import kotlinx.coroutines.launch
 
 data class ConfirmMatchUiState(
     val results: List<MediaResult> = emptyList(),
-    // One selection mechanism (checkboxes) drives both actions: Save to
-    // Library works on any non-empty selection, Confirm & Download only
-    // makes sense for exactly one - a magnet can only ever be one thing.
+    // Multi-select: results checked to "Save to Library" - independent of
+    // which one the captured magnet actually is, since you might want to
+    // save a few candidates (or unrelated titles you noticed) without any
+    // of them being the magnet's match.
     val checkedIds: Set<Int> = emptySet(),
+    // Single-select: which result the captured magnet actually is. Separate
+    // from checkedIds on purpose - checking a box for "save this too" must
+    // never accidentally make Confirm & Download fire against the wrong
+    // title relative to the magnet you actually tapped.
+    val magnetMatchId: Int? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
 ) {
     val confirmTarget: MediaResult?
-        get() = checkedIds.singleOrNull()?.let { id -> results.firstOrNull { it.id == id } }
+        get() = magnetMatchId?.let { id -> results.firstOrNull { it.id == id } }
 }
 
 /**
@@ -46,6 +52,10 @@ class ConfirmMatchViewModel(
             _uiState.value = when (result) {
                 is TmdbResult.Success -> _uiState.value.copy(
                     results = result.data,
+                    // Best-effort default so Confirm & Download isn't cold-
+                    // disabled - the top TMDB result is usually the match,
+                    // but the user can re-pick via the radio marker.
+                    magnetMatchId = result.data.firstOrNull()?.id,
                     isLoading = false,
                 )
                 is TmdbResult.Failure -> _uiState.value.copy(
@@ -61,5 +71,9 @@ class ConfirmMatchViewModel(
         val current = _uiState.value.checkedIds
         val updated = if (result.id in current) current - result.id else current + result.id
         _uiState.value = _uiState.value.copy(checkedIds = updated)
+    }
+
+    fun selectMagnetMatch(result: MediaResult) {
+        _uiState.value = _uiState.value.copy(magnetMatchId = result.id)
     }
 }

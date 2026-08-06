@@ -20,6 +20,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -105,6 +106,12 @@ fun ConfirmMatchScreen(
                     result = result,
                     isChecked = result.id in uiState.checkedIds,
                     onToggle = { viewModel.toggleChecked(result) },
+                    isMagnetMatch = showDownloadAction && result.id == uiState.magnetMatchId,
+                    onSelectMagnetMatch = if (showDownloadAction) {
+                        { viewModel.selectMagnetMatch(result) }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -139,8 +146,14 @@ fun ConfirmMatchScreen(
 }
 
 @Composable
-private fun ResultCard(result: MediaResult, isChecked: Boolean, onToggle: () -> Unit) {
-    val borderColor = if (isChecked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
+private fun ResultCard(
+    result: MediaResult,
+    isChecked: Boolean,
+    onToggle: () -> Unit,
+    isMagnetMatch: Boolean,
+    onSelectMagnetMatch: (() -> Unit)?,
+) {
+    val borderColor = if (isMagnetMatch) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -150,7 +163,10 @@ private fun ResultCard(result: MediaResult, isChecked: Boolean, onToggle: () -> 
             .border(1.dp, borderColor, RoundedCornerShape(14.dp))
             .clickable(onClick = onToggle),
     ) {
-        Row(modifier = Modifier.padding(10.dp).padding(end = 32.dp)) {
+        Row(modifier = Modifier.padding(10.dp).padding(end = 32.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (onSelectMagnetMatch != null) {
+            RadioButton(selected = isMagnetMatch, onClick = onSelectMagnetMatch)
+        }
         if (result.posterUrl != null) {
             AsyncImage(
                 model = result.posterUrl,

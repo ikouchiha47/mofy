@@ -31,6 +31,7 @@ private val MofyColorScheme = darkColorScheme(
 fun MofyTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = MofyColorScheme,
+        typography = MofyTypography,
         content = content,
     )
 }

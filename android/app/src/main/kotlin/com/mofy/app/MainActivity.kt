@@ -18,15 +18,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mofy.app.data.sites.SiteCatalog
 import com.mofy.app.data.sites.TorrentSite
 import com.mofy.app.ui.browse.BrowseScreen
 import com.mofy.app.ui.browse.BrowseSessionViewModel
+import com.mofy.app.ui.browse.TorrentWebViewScreen
 import com.mofy.app.ui.home.HomeScreen
 import com.mofy.app.ui.library.LibraryScreen
 import com.mofy.app.ui.nav.PlaceholderScreen
@@ -52,13 +56,17 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private const val ROUTE_WEBVIEW_PLACEHOLDER = "webview_placeholder/{siteName}"
+private const val ROUTE_WEBVIEW = "webview/{siteName}"
+private const val ROUTE_CONFIRM_MATCH_PLACEHOLDER = "confirm_match_placeholder"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MofyApp() {
     val navController = rememberNavController()
-    val browseSessionViewModel = BrowseSessionViewModel()
+    // remember is required here - MofyApp recomposes on every navigation
+    // (currentRoute changes), and without it this would silently reset the
+    // selected category/extracted title on every screen transition.
+    val browseSessionViewModel = remember { BrowseSessionViewModel() }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -83,7 +91,7 @@ private fun MofyApp() {
                     },
                 )
                 TopLevelDestination.BROWSE.route -> TopAppBar(title = { Text("Browse") })
-                ROUTE_WEBVIEW_PLACEHOLDER -> TopAppBar(
+                ROUTE_WEBVIEW -> TopAppBar(
                     title = { Text(backStackEntry?.arguments?.getString("siteName") ?: "") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
@@ -109,6 +117,14 @@ private fun MofyApp() {
                 )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
+                ROUTE_CONFIRM_MATCH_PLACEHOLDER -> TopAppBar(
+                    title = { Text("Confirm Match") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
             }
         },
         bottomBar = {
@@ -144,7 +160,7 @@ private fun MofyApp() {
                     contentPadding = contentPadding,
                     sessionViewModel = browseSessionViewModel,
                     onSitePicked = { site: TorrentSite ->
-                        navController.navigate("webview_placeholder/${site.name}")
+                        navController.navigate("webview/${site.name}")
                     },
                     onEditSite = { site: TorrentSite? ->
                         val route = site?.let { PushedRoute.editSite(it.name) } ?: PushedRoute.EDIT_SITE_NEW
@@ -158,8 +174,27 @@ private fun MofyApp() {
             composable(TopLevelDestination.SETTINGS.route) {
                 SettingsScreen(contentPadding = contentPadding)
             }
-            composable(ROUTE_WEBVIEW_PLACEHOLDER) {
-                PlaceholderScreen(contentPadding = contentPadding, note = "WebView browsing lands with Phase 02")
+            composable(ROUTE_WEBVIEW) { backStack ->
+                val siteName = backStack.arguments?.getString("siteName") ?: ""
+                val site = SiteCatalog.byName(siteName)
+                if (site != null) {
+                    TorrentWebViewScreen(
+                        contentPadding = contentPadding,
+                        site = site,
+                        sessionViewModel = browseSessionViewModel,
+                        onMagnetCaptured = { navController.navigate(ROUTE_CONFIRM_MATCH_PLACEHOLDER) },
+                    )
+                } else {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "Unknown site \"$siteName\"")
+                }
+            }
+            composable(ROUTE_CONFIRM_MATCH_PLACEHOLDER) {
+                val extractedTitle by browseSessionViewModel.extractedTitle.collectAsState()
+                val magnetUri by browseSessionViewModel.pendingMagnetUri.collectAsState()
+                PlaceholderScreen(
+                    contentPadding = contentPadding,
+                    note = "Captured \"${extractedTitle ?: "unknown title"}\"\n${magnetUri ?: ""}\n\nConfirm Match screen lands with Phase 09",
+                )
             }
             composable(PushedRoute.EDIT_SITE) { backStack ->
                 val siteName = backStack.arguments?.getString("siteName") ?: ""

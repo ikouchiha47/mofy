@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mofy.app.data.tmdb.MediaResult
 import com.mofy.app.data.tmdb.MediaType
+import com.mofy.app.ui.components.CategorySegmentedControl
 
 @Composable
 fun ConfirmMatchScreen(
@@ -42,6 +43,13 @@ fun ConfirmMatchScreen(
     mediaType: MediaType,
     onConfirm: (MediaResult) -> Unit,
     onSaveToLibrary: (List<MediaResult>) -> Unit,
+    // Imported local files have nothing to download - only Save to Library
+    // makes sense there. See LibraryScreen's Import flow.
+    showDownloadAction: Boolean = true,
+    // Only the Import flow sets this - there's no site/category context for
+    // a locally-picked file to lock onto, unlike the WebView flow where the
+    // category was already chosen back on Browse.
+    onMediaTypeChange: ((MediaType) -> Unit)? = null,
     viewModel: ConfirmMatchViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -50,7 +58,12 @@ fun ConfirmMatchScreen(
         viewModel.search(extractedTitle, mediaType)
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
+        if (onMediaTypeChange != null) {
+            CategorySegmentedControl(selected = mediaType, onSelect = onMediaTypeChange)
+        }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         // Extracted-title banner + locked-category pill - see ADR 0003.
         Column(
             modifier = Modifier
@@ -62,6 +75,7 @@ fun ConfirmMatchScreen(
             Text("Extracted from page:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("\"$extractedTitle\"", style = MaterialTheme.typography.titleMedium)
             val categoryLabel = if (mediaType == MediaType.MOVIE) "movies" else "TV shows"
+            val lockLabel = if (onMediaTypeChange == null) " ▸ category locked" else ""
             Box(
                 modifier = Modifier
                     .padding(top = 6.dp)
@@ -70,7 +84,7 @@ fun ConfirmMatchScreen(
                     .padding(horizontal = 10.dp, vertical = 3.dp),
             ) {
                 Text(
-                    "searching $categoryLabel ▸ category locked",
+                    "searching $categoryLabel$lockLabel",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.secondary,
                 )
@@ -89,46 +103,44 @@ fun ConfirmMatchScreen(
             items(uiState.results) { result ->
                 ResultCard(
                     result = result,
-                    isSelected = result.id == uiState.selected?.id,
-                    isCheckedForLibrary = result.id in uiState.selectedForLibrary,
-                    onClick = { viewModel.selectResult(result) },
-                    onLibraryCheckedChange = { viewModel.toggleLibrarySelection(result) },
+                    isChecked = result.id in uiState.checkedIds,
+                    onToggle = { viewModel.toggleChecked(result) },
                 )
             }
         }
 
-        val libraryCount = uiState.selectedForLibrary.size
+        val checkedCount = uiState.checkedIds.size
+        val confirmTarget = uiState.confirmTarget
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
                 onClick = {
-                    val toSave = uiState.results.filter { it.id in uiState.selectedForLibrary }
+                    val toSave = uiState.results.filter { it.id in uiState.checkedIds }
                     onSaveToLibrary(toSave)
                 },
-                enabled = libraryCount > 0,
+                enabled = checkedCount > 0,
                 modifier = Modifier.weight(1f),
             ) {
-                Text(if (libraryCount > 0) "Save to Library ($libraryCount)" else "Save to Library")
+                Text(if (checkedCount > 0) "Save to Library ($checkedCount)" else "Save to Library")
             }
-            Button(
-                onClick = { uiState.selected?.let(onConfirm) },
-                enabled = uiState.selected != null,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Confirm & Download")
+            if (showDownloadAction) {
+                Button(
+                    // Only makes sense for exactly one selection - a magnet can
+                    // only ever be one thing, see ConfirmMatchUiState.confirmTarget.
+                    onClick = { confirmTarget?.let(onConfirm) },
+                    enabled = confirmTarget != null,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Confirm & Download")
+                }
             }
         }
+    }
     }
 }
 
 @Composable
-private fun ResultCard(
-    result: MediaResult,
-    isSelected: Boolean,
-    isCheckedForLibrary: Boolean,
-    onClick: () -> Unit,
-    onLibraryCheckedChange: () -> Unit,
-) {
-    val borderColor = if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
+private fun ResultCard(result: MediaResult, isChecked: Boolean, onToggle: () -> Unit) {
+    val borderColor = if (isChecked) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -136,7 +148,7 @@ private fun ResultCard(
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
+            .clickable(onClick = onToggle),
     ) {
         Row(modifier = Modifier.padding(10.dp).padding(end = 32.dp)) {
         if (result.posterUrl != null) {
@@ -174,8 +186,8 @@ private fun ResultCard(
         }
         }
         Checkbox(
-            checked = isCheckedForLibrary,
-            onCheckedChange = { onLibraryCheckedChange() },
+            checked = isChecked,
+            onCheckedChange = { onToggle() },
             modifier = Modifier.align(Alignment.TopEnd),
         )
     }

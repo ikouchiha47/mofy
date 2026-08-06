@@ -13,16 +13,16 @@ import kotlinx.coroutines.launch
 
 data class ConfirmMatchUiState(
     val results: List<MediaResult> = emptyList(),
-    // Single-select: which result the captured magnet actually is - one
-    // magnet can only ever be one thing.
-    val selected: MediaResult? = null,
-    // Multi-select: results checked to "Save to Library" - independent of
-    // the download selection, since you might want to save a few candidates
-    // (e.g. unsure which sequel this is) without downloading any of them.
-    val selectedForLibrary: Set<Int> = emptySet(),
+    // One selection mechanism (checkboxes) drives both actions: Save to
+    // Library works on any non-empty selection, Confirm & Download only
+    // makes sense for exactly one - a magnet can only ever be one thing.
+    val checkedIds: Set<Int> = emptySet(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-)
+) {
+    val confirmTarget: MediaResult?
+        get() = checkedIds.singleOrNull()?.let { id -> results.firstOrNull { it.id == id } }
+}
 
 /**
  * Phase 02's magnet-capture hand-off, closed the loop with Phase 01's TMDB
@@ -46,7 +46,6 @@ class ConfirmMatchViewModel(
             _uiState.value = when (result) {
                 is TmdbResult.Success -> _uiState.value.copy(
                     results = result.data,
-                    selected = result.data.firstOrNull(),
                     isLoading = false,
                 )
                 is TmdbResult.Failure -> _uiState.value.copy(
@@ -58,13 +57,9 @@ class ConfirmMatchViewModel(
         }
     }
 
-    fun selectResult(result: MediaResult) {
-        _uiState.value = _uiState.value.copy(selected = result)
-    }
-
-    fun toggleLibrarySelection(result: MediaResult) {
-        val current = _uiState.value.selectedForLibrary
+    fun toggleChecked(result: MediaResult) {
+        val current = _uiState.value.checkedIds
         val updated = if (result.id in current) current - result.id else current + result.id
-        _uiState.value = _uiState.value.copy(selectedForLibrary = updated)
+        _uiState.value = _uiState.value.copy(checkedIds = updated)
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -67,6 +68,7 @@ class MainActivity : ComponentActivity() {
 
 private const val ROUTE_WEBVIEW = "webview/{siteName}"
 private const val ROUTE_CONFIRM_MATCH = "confirm_match"
+private const val ROUTE_IMPORT_CONFIRM = "import_confirm/{title}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,6 +132,14 @@ private fun MofyApp() {
                 )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
+                ROUTE_IMPORT_CONFIRM -> TopAppBar(
+                    title = { Text("Import") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
                 ROUTE_CONFIRM_MATCH -> TopAppBar(
                     title = {
                         Column {
@@ -191,7 +201,13 @@ private fun MofyApp() {
                 )
             }
             composable(TopLevelDestination.LIBRARY.route) {
-                LibraryScreen(contentPadding = contentPadding)
+                LibraryScreen(
+                    contentPadding = contentPadding,
+                    onImportPicked = { guessedTitle ->
+                        val encoded = java.net.URLEncoder.encode(guessedTitle, "UTF-8")
+                        navController.navigate("import_confirm/$encoded")
+                    },
+                )
             }
             composable(TopLevelDestination.SETTINGS.route) {
                 SettingsScreen(contentPadding = contentPadding)
@@ -213,6 +229,7 @@ private fun MofyApp() {
             composable(ROUTE_CONFIRM_MATCH) {
                 val extractedTitle by browseSessionViewModel.extractedTitle.collectAsState()
                 val category by browseSessionViewModel.selectedCategory.collectAsState()
+                val magnetUri by browseSessionViewModel.pendingMagnetUri.collectAsState()
                 // Title is guaranteed by construction by the time a magnet tap
                 // navigates here: BrowseSessionViewModel.onMagnetTapped sets it
                 // from the magnet URI's dn= param synchronously, falling back
@@ -224,8 +241,15 @@ private fun MofyApp() {
                         extractedTitle = extractedTitle!!,
                         mediaType = category!!,
                         onConfirm = {
-                            // No torrent engine yet (Phase 03) - just close
-                            // the loop back to Browse for now.
+                            // No torrent engine (Phase 03 parked) - hand the
+                            // magnet off to whatever's installed (uTorrent
+                            // etc.) via the system share sheet instead. Always
+                            // force the chooser rather than letting Android
+                            // silently reuse a remembered default handler.
+                            magnetUri?.let { uri ->
+                                val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri))
+                                context.startActivity(android.content.Intent.createChooser(viewIntent, "Open magnet link with"))
+                            }
                             browseSessionViewModel.clearAfterConfirm()
                             navController.popBackStack(TopLevelDestination.BROWSE.route, inclusive = false)
                         },
@@ -246,6 +270,34 @@ private fun MofyApp() {
                 } else {
                     PlaceholderScreen(contentPadding = contentPadding, note = "No magnet link captured yet")
                 }
+            }
+            composable(ROUTE_IMPORT_CONFIRM) { backStack ->
+                val encodedTitle = backStack.arguments?.getString("title") ?: ""
+                val title = java.net.URLDecoder.decode(encodedTitle, "UTF-8")
+                var importMediaType by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(com.mofy.app.data.tmdb.MediaType.MOVIE)
+                }
+                ConfirmMatchScreen(
+                    contentPadding = contentPadding,
+                    extractedTitle = title,
+                    // No site/category context for a locally-picked file -
+                    // user picks it via the segmented control (onMediaTypeChange).
+                    mediaType = importMediaType,
+                    onMediaTypeChange = { importMediaType = it },
+                    showDownloadAction = false,
+                    onConfirm = {},
+                    onSaveToLibrary = { results ->
+                        coroutineScope.launch {
+                            results.forEach { database.libraryDao().upsert(it.toLibraryItem(LibrarySource.IMPORTED)) }
+                        }
+                        android.widget.Toast.makeText(
+                            context,
+                            if (results.size == 1) "Saved to library" else "Saved ${results.size} to library",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                        navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
+                    },
+                )
             }
             composable(PushedRoute.EDIT_SITE) { backStack ->
                 val siteName = backStack.arguments?.getString("siteName") ?: ""

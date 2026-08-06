@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [LibraryItem::class], version = 1, exportSchema = false)
+@Database(entities = [LibraryItem::class, LibraryDownload::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
 
@@ -17,7 +17,11 @@ abstract class AppDatabase : RoomDatabase() {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "mofy.db",
-            ).build().also { instance = it }
+            )
+                // Pre-release dev app, no real user data to preserve yet -
+                // simplest path across schema changes.
+                .fallbackToDestructiveMigration(true)
+                .build().also { instance = it }
         }
     }
 }

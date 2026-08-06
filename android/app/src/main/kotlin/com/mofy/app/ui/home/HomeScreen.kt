@@ -1,6 +1,7 @@
 package com.mofy.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +39,7 @@ import kotlinx.coroutines.flow.emptyFlow
  * now, sourced from Confirm Match's "Save to Library" action.
  */
 @Composable
-fun HomeScreen(contentPadding: PaddingValues, libraryDao: LibraryDao? = null) {
+fun HomeScreen(contentPadding: PaddingValues, libraryDao: LibraryDao? = null, onItemClick: (LibraryItem) -> Unit = {}) {
     val items by (libraryDao?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
@@ -60,7 +61,7 @@ fun HomeScreen(contentPadding: PaddingValues, libraryDao: LibraryDao? = null) {
                 contentPadding = PaddingValues(horizontal = 16.dp),
             ) {
                 items(items, key = { it.key }) { item ->
-                    LibraryPosterCard(item)
+                    LibraryPosterCard(item, onClick = { onItemClick(item) })
                 }
             }
         }
@@ -68,9 +69,9 @@ fun HomeScreen(contentPadding: PaddingValues, libraryDao: LibraryDao? = null) {
 }
 
 @Composable
-private fun LibraryPosterCard(item: LibraryItem) {
+private fun LibraryPosterCard(item: LibraryItem, onClick: () -> Unit) {
     val result: MediaResult = item.toMediaResult()
-    Column(modifier = Modifier.width(96.dp)) {
+    Column(modifier = Modifier.width(96.dp).clickable(onClick = onClick)) {
         if (result.posterUrl != null) {
             AsyncImage(
                 model = result.posterUrl,

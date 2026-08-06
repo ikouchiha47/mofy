@@ -28,6 +28,20 @@ class BrowseSessionViewModel : ViewModel() {
     private val _pendingMagnetUri = MutableStateFlow<String?>(null)
     val pendingMagnetUri: StateFlow<String?> = _pendingMagnetUri.asStateFlow()
 
+    // Set when "search for torrent" is tapped from a library item's detail
+    // page - Browse shows a "Searching for: X" banner while this is set,
+    // and it's cleared the instant a site is picked (its one job is done,
+    // so Browse reads as normal the next time you land on it).
+    data class SearchContext(val title: String, val mediaType: MediaType)
+    private val _searchContext = MutableStateFlow<SearchContext?>(null)
+    val searchContext: StateFlow<SearchContext?> = _searchContext.asStateFlow()
+
+    // Set by Browse right before navigating into the WebView, when the site
+    // was picked to fulfill a search context - the constructed search URL to
+    // load instead of the site's base URL.
+    private val _pendingLoadUrl = MutableStateFlow<String?>(null)
+    val pendingLoadUrl: StateFlow<String?> = _pendingLoadUrl.asStateFlow()
+
     // WebView navigation history (saveState/restoreState) so returning from
     // Confirm Match doesn't reload the site from scratch - Compose Navigation
     // disposes the WebView composable when it's off the back stack.
@@ -35,6 +49,25 @@ class BrowseSessionViewModel : ViewModel() {
 
     fun selectCategory(category: MediaType) {
         _selectedCategory.value = category
+    }
+
+    fun startSearch(title: String, mediaType: MediaType) {
+        _searchContext.value = SearchContext(title, mediaType)
+    }
+
+    fun clearSearchContext() {
+        _searchContext.value = null
+    }
+
+    fun consumeSearchContext(loadUrl: String?) {
+        _pendingLoadUrl.value = loadUrl
+        _searchContext.value = null
+    }
+
+    fun consumePendingLoadUrl(): String? {
+        val url = _pendingLoadUrl.value
+        _pendingLoadUrl.value = null
+        return url
     }
 
     fun selectSite(site: TorrentSite) {

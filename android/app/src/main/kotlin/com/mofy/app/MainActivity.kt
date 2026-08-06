@@ -32,7 +32,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mofy.app.data.library.AppDatabase
+import com.mofy.app.data.library.LibraryDownload
 import com.mofy.app.data.library.LibrarySource
+import com.mofy.app.data.library.ResourceType
+import com.mofy.app.data.library.magnetInfoHash
 import com.mofy.app.data.library.toLibraryItem
 import com.mofy.app.data.sites.SiteCatalog
 import com.mofy.app.data.sites.TorrentSite
@@ -40,6 +43,7 @@ import com.mofy.app.ui.browse.BrowseScreen
 import com.mofy.app.ui.browse.BrowseSessionViewModel
 import com.mofy.app.ui.browse.TorrentWebViewScreen
 import com.mofy.app.ui.confirm.ConfirmMatchScreen
+import com.mofy.app.ui.detail.DetailScreen
 import com.mofy.app.ui.home.HomeScreen
 import kotlinx.coroutines.launch
 import com.mofy.app.ui.library.LibraryScreen
@@ -69,6 +73,7 @@ class MainActivity : ComponentActivity() {
 private const val ROUTE_WEBVIEW = "webview/{siteName}"
 private const val ROUTE_CONFIRM_MATCH = "confirm_match"
 private const val ROUTE_IMPORT_CONFIRM = "import_confirm/{title}"
+private const val ROUTE_DETAIL = "detail/{key}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,6 +137,14 @@ private fun MofyApp() {
                 )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
+                ROUTE_DETAIL -> TopAppBar(
+                    title = { Text("Details") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
                 ROUTE_IMPORT_CONFIRM -> TopAppBar(
                     title = { Text("Import") },
                     navigationIcon = {
@@ -185,7 +198,11 @@ private fun MofyApp() {
             startDestination = TopLevelDestination.HOME.route,
         ) {
             composable(TopLevelDestination.HOME.route) {
-                HomeScreen(contentPadding = contentPadding, libraryDao = database.libraryDao())
+                HomeScreen(
+                    contentPadding = contentPadding,
+                    libraryDao = database.libraryDao(),
+                    onItemClick = { item -> navController.navigate("detail/${item.key}") },
+                )
             }
             composable(TopLevelDestination.BROWSE.route) {
                 BrowseScreen(
@@ -240,7 +257,7 @@ private fun MofyApp() {
                         contentPadding = contentPadding,
                         extractedTitle = extractedTitle!!,
                         mediaType = category!!,
-                        onConfirm = {
+                        onConfirm = { confirmed ->
                             // No torrent engine (Phase 03 parked) - hand the
                             // magnet off to whatever's installed (uTorrent
                             // etc.) via the system share sheet instead. Always
@@ -249,6 +266,24 @@ private fun MofyApp() {
                             magnetUri?.let { uri ->
                                 val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri))
                                 context.startActivity(android.content.Intent.createChooser(viewIntent, "Open magnet link with"))
+                                // Persist against the confirmed TMDB match, not
+                                // discarded - upsert is idempotent on tmdbId, and
+                                // the unique (item, infoHash) index means
+                                // re-confirming the same torrent is a no-op while
+                                // different releases of the same title both stay.
+                                coroutineScope.launch {
+                                    val libraryItem = confirmed.toLibraryItem(LibrarySource.SAVED)
+                                    database.libraryDao().upsert(libraryItem)
+                                    database.libraryDao().insertDownload(
+                                        LibraryDownload(
+                                            libraryItemKey = libraryItem.key,
+                                            resourceType = ResourceType.MAGNET.name,
+                                            uri = uri,
+                                            infoHash = magnetInfoHash(uri),
+                                            addedAtEpochMillis = System.currentTimeMillis(),
+                                        ),
+                                    )
+                                }
                             }
                             browseSessionViewModel.clearAfterConfirm()
                             navController.popBackStack(TopLevelDestination.BROWSE.route, inclusive = false)
@@ -296,6 +331,25 @@ private fun MofyApp() {
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                         navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
+                    },
+                )
+            }
+            composable(ROUTE_DETAIL) { backStack ->
+                val key = backStack.arguments?.getString("key") ?: ""
+                DetailScreen(
+                    contentPadding = contentPadding,
+                    itemKey = key,
+                    libraryDao = database.libraryDao(),
+                    onSearchForTorrent = { item ->
+                        browseSessionViewModel.startSearch(
+                            item.title,
+                            com.mofy.app.data.tmdb.MediaType.valueOf(item.mediaType),
+                        )
+                        navController.navigate(TopLevelDestination.BROWSE.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     },
                 )
             }

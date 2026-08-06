@@ -114,7 +114,7 @@ fun TorrentWebViewScreen(
                     if (savedState != null) {
                         restoreState(savedState)
                     } else {
-                        loadUrl(site.baseUrl)
+                        loadUrl(sessionViewModel.consumePendingLoadUrl() ?: site.baseUrl)
                     }
                 }
             },

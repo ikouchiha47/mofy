@@ -1,20 +1,27 @@
 package com.mofy.app.ui.browse
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,7 +47,10 @@ fun BrowseScreen(
     onEditSite: (TorrentSite?) -> Unit,
 ) {
     val category by sessionViewModel.selectedCategory.collectAsState()
-    val currentCategory = category ?: MediaType.MOVIE
+    val searchContext by sessionViewModel.searchContext.collectAsState()
+    // A search context (from a detail page's "search for torrent") pins the
+    // category to what that item actually is - no point letting it drift.
+    val currentCategory = searchContext?.mediaType ?: category ?: MediaType.MOVIE
 
     // The "Movies" default is only a local display fallback above - without
     // this, sessionViewModel.selectedCategory stays null forever if the user
@@ -53,6 +63,10 @@ fun BrowseScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
+        searchContext?.let { context ->
+            SearchContextBanner(title = context.title, onClear = { sessionViewModel.clearSearchContext() })
+        }
+
         CategorySegmentedControl(
             selected = currentCategory,
             onSelect = { sessionViewModel.selectCategory(it) },
@@ -63,7 +77,11 @@ fun BrowseScreen(
             items(sites) { site ->
                 SiteRow(
                     site = site,
-                    onClick = { onSitePicked(site) },
+                    onClick = {
+                        val loadUrl = searchContext?.let { site.searchUrl(it.title) }
+                        sessionViewModel.consumeSearchContext(loadUrl)
+                        onSitePicked(site)
+                    },
                     onEditClick = { onEditSite(site) },
                 )
             }
@@ -75,6 +93,28 @@ fun BrowseScreen(
                     modifier = Modifier.clickable { onEditSite(null) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchContextBanner(title: String, onClear: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+            .padding(start = 12.dp),
+    ) {
+        Text(
+            "Searching for: $title",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onClear) {
+            Icon(Icons.Filled.Close, contentDescription = "Clear search")
         }
     }
 }

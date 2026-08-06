@@ -13,7 +13,13 @@ import kotlinx.coroutines.launch
 
 data class ConfirmMatchUiState(
     val results: List<MediaResult> = emptyList(),
+    // Single-select: which result the captured magnet actually is - one
+    // magnet can only ever be one thing.
     val selected: MediaResult? = null,
+    // Multi-select: results checked to "Save to Library" - independent of
+    // the download selection, since you might want to save a few candidates
+    // (e.g. unsure which sequel this is) without downloading any of them.
+    val selectedForLibrary: Set<Int> = emptySet(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
 )
@@ -54,5 +60,11 @@ class ConfirmMatchViewModel(
 
     fun selectResult(result: MediaResult) {
         _uiState.value = _uiState.value.copy(selected = result)
+    }
+
+    fun toggleLibrarySelection(result: MediaResult) {
+        val current = _uiState.value.selectedForLibrary
+        val updated = if (result.id in current) current - result.id else current + result.id
+        _uiState.value = _uiState.value.copy(selectedForLibrary = updated)
     }
 }

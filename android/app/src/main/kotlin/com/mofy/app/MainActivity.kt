@@ -23,11 +23,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mofy.app.data.library.AppDatabase
+import com.mofy.app.data.library.LibrarySource
+import com.mofy.app.data.library.toLibraryItem
 import com.mofy.app.data.sites.SiteCatalog
 import com.mofy.app.data.sites.TorrentSite
 import com.mofy.app.ui.browse.BrowseScreen
@@ -35,6 +40,7 @@ import com.mofy.app.ui.browse.BrowseSessionViewModel
 import com.mofy.app.ui.browse.TorrentWebViewScreen
 import com.mofy.app.ui.confirm.ConfirmMatchScreen
 import com.mofy.app.ui.home.HomeScreen
+import kotlinx.coroutines.launch
 import com.mofy.app.ui.library.LibraryScreen
 import com.mofy.app.ui.nav.PlaceholderScreen
 import com.mofy.app.ui.nav.PushedRoute
@@ -70,6 +76,10 @@ private fun MofyApp() {
     // (currentRoute changes), and without it this would silently reset the
     // selected category/extracted title on every screen transition.
     val browseSessionViewModel = remember { BrowseSessionViewModel() }
+
+    val context = LocalContext.current
+    val database = remember { AppDatabase.get(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -165,7 +175,7 @@ private fun MofyApp() {
             startDestination = TopLevelDestination.HOME.route,
         ) {
             composable(TopLevelDestination.HOME.route) {
-                HomeScreen(contentPadding = contentPadding)
+                HomeScreen(contentPadding = contentPadding, libraryDao = database.libraryDao())
             }
             composable(TopLevelDestination.BROWSE.route) {
                 BrowseScreen(
@@ -214,10 +224,23 @@ private fun MofyApp() {
                         extractedTitle = extractedTitle!!,
                         mediaType = category!!,
                         onConfirm = {
-                            // No torrent engine/library yet (Phase 03/06) - just
-                            // close the loop back to Browse for now.
+                            // No torrent engine yet (Phase 03) - just close
+                            // the loop back to Browse for now.
                             browseSessionViewModel.clearAfterConfirm()
                             navController.popBackStack(TopLevelDestination.BROWSE.route, inclusive = false)
+                        },
+                        onSaveToLibrary = { results ->
+                            coroutineScope.launch {
+                                results.forEach { database.libraryDao().upsert(it.toLibraryItem(LibrarySource.SAVED)) }
+                            }
+                            android.widget.Toast.makeText(
+                                context,
+                                if (results.size == 1) "Saved to library" else "Saved ${results.size} to library",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            // Same as the back button: single pop back into the
+                            // WebView, which restores the exact page you were on.
+                            navController.popBackStack()
                         },
                     )
                 } else {

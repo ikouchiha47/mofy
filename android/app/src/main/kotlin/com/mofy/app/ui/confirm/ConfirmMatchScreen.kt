@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +41,7 @@ fun ConfirmMatchScreen(
     extractedTitle: String,
     mediaType: MediaType,
     onConfirm: (MediaResult) -> Unit,
+    onSaveToLibrary: (List<MediaResult>) -> Unit,
     viewModel: ConfirmMatchViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -86,34 +90,55 @@ fun ConfirmMatchScreen(
                 ResultCard(
                     result = result,
                     isSelected = result.id == uiState.selected?.id,
+                    isCheckedForLibrary = result.id in uiState.selectedForLibrary,
                     onClick = { viewModel.selectResult(result) },
+                    onLibraryCheckedChange = { viewModel.toggleLibrarySelection(result) },
                 )
             }
         }
 
-        Button(
-            onClick = { uiState.selected?.let(onConfirm) },
-            enabled = uiState.selected != null,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Confirm & Start Download")
+        val libraryCount = uiState.selectedForLibrary.size
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = {
+                    val toSave = uiState.results.filter { it.id in uiState.selectedForLibrary }
+                    onSaveToLibrary(toSave)
+                },
+                enabled = libraryCount > 0,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(if (libraryCount > 0) "Save to Library ($libraryCount)" else "Save to Library")
+            }
+            Button(
+                onClick = { uiState.selected?.let(onConfirm) },
+                enabled = uiState.selected != null,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Confirm & Download")
+            }
         }
     }
 }
 
 @Composable
-private fun ResultCard(result: MediaResult, isSelected: Boolean, onClick: () -> Unit) {
+private fun ResultCard(
+    result: MediaResult,
+    isSelected: Boolean,
+    isCheckedForLibrary: Boolean,
+    onClick: () -> Unit,
+    onLibraryCheckedChange: () -> Unit,
+) {
     val borderColor = if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(10.dp),
+            .clickable(onClick = onClick),
     ) {
+        Row(modifier = Modifier.padding(10.dp).padding(end = 32.dp)) {
         if (result.posterUrl != null) {
             AsyncImage(
                 model = result.posterUrl,
@@ -147,5 +172,11 @@ private fun ResultCard(result: MediaResult, isSelected: Boolean, onClick: () -> 
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        }
+        Checkbox(
+            checked = isCheckedForLibrary,
+            onCheckedChange = { onLibraryCheckedChange() },
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
     }
 }

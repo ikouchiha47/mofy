@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.devtools.ksp")
 }
 
 fun loadEnv(): Properties {
@@ -82,6 +83,10 @@ dependencies {
 
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+
+    implementation("androidx.room:room-runtime:2.8.1")
+    implementation("androidx.room:room-ktx:2.8.1")
+    ksp("androidx.room:room-compiler:2.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

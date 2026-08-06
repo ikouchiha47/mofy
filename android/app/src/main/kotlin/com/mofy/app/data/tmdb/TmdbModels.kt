@@ -25,6 +25,8 @@ data class TmdbResultDto(
 
 enum class MediaType { MOVIE, TV }
 
+private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342"
+
 data class MediaResult(
     val id: Int,
     val title: String,
@@ -34,7 +36,10 @@ data class MediaResult(
     val genreIds: List<Int>,
     val voteAverage: Double,
     val mediaType: MediaType,
-)
+) {
+    val posterUrl: String?
+        get() = posterPath?.let { "$TMDB_IMAGE_BASE_URL$it" }
+}
 
 fun TmdbResultDto.toMediaResult(mediaType: MediaType): MediaResult = MediaResult(
     id = id,

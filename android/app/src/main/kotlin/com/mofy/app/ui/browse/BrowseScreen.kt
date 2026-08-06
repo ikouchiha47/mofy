@@ -22,6 +22,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -45,6 +46,16 @@ fun BrowseScreen(
 ) {
     val category by sessionViewModel.selectedCategory.collectAsState()
     val currentCategory = category ?: MediaType.MOVIE
+
+    // The "Movies" default is only a local display fallback above - without
+    // this, sessionViewModel.selectedCategory stays null forever if the user
+    // never explicitly taps a segment (since Movies already looks selected),
+    // which broke the Confirm Match gate downstream. Persist the default.
+    LaunchedEffect(Unit) {
+        if (sessionViewModel.selectedCategory.value == null) {
+            sessionViewModel.selectCategory(MediaType.MOVIE)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
         CategorySegmentedControl(

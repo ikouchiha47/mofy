@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Groups
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -31,6 +33,7 @@ import com.mofy.app.data.sites.TorrentSite
 import com.mofy.app.ui.browse.BrowseScreen
 import com.mofy.app.ui.browse.BrowseSessionViewModel
 import com.mofy.app.ui.browse.TorrentWebViewScreen
+import com.mofy.app.ui.confirm.ConfirmMatchScreen
 import com.mofy.app.ui.home.HomeScreen
 import com.mofy.app.ui.library.LibraryScreen
 import com.mofy.app.ui.nav.PlaceholderScreen
@@ -57,7 +60,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private const val ROUTE_WEBVIEW = "webview/{siteName}"
-private const val ROUTE_CONFIRM_MATCH_PLACEHOLDER = "confirm_match_placeholder"
+private const val ROUTE_CONFIRM_MATCH = "confirm_match"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,8 +120,17 @@ private fun MofyApp() {
                 )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
-                ROUTE_CONFIRM_MATCH_PLACEHOLDER -> TopAppBar(
-                    title = { Text("Confirm Match") },
+                ROUTE_CONFIRM_MATCH -> TopAppBar(
+                    title = {
+                        Column {
+                            Text("Confirm Match")
+                            Text(
+                                "Magnet link captured",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -182,19 +194,35 @@ private fun MofyApp() {
                         contentPadding = contentPadding,
                         site = site,
                         sessionViewModel = browseSessionViewModel,
-                        onMagnetCaptured = { navController.navigate(ROUTE_CONFIRM_MATCH_PLACEHOLDER) },
+                        onMagnetCaptured = { navController.navigate(ROUTE_CONFIRM_MATCH) },
                     )
                 } else {
                     PlaceholderScreen(contentPadding = contentPadding, note = "Unknown site \"$siteName\"")
                 }
             }
-            composable(ROUTE_CONFIRM_MATCH_PLACEHOLDER) {
+            composable(ROUTE_CONFIRM_MATCH) {
                 val extractedTitle by browseSessionViewModel.extractedTitle.collectAsState()
-                val magnetUri by browseSessionViewModel.pendingMagnetUri.collectAsState()
-                PlaceholderScreen(
-                    contentPadding = contentPadding,
-                    note = "Captured \"${extractedTitle ?: "unknown title"}\"\n${magnetUri ?: ""}\n\nConfirm Match screen lands with Phase 09",
-                )
+                val category by browseSessionViewModel.selectedCategory.collectAsState()
+                // Title is guaranteed by construction by the time a magnet tap
+                // navigates here: BrowseSessionViewModel.onMagnetTapped sets it
+                // from the magnet URI's dn= param synchronously, falling back
+                // to whatever the CSS-selector page extraction already found.
+                // This check is a type-safety formality, not a real fallback path.
+                if (extractedTitle != null && category != null) {
+                    ConfirmMatchScreen(
+                        contentPadding = contentPadding,
+                        extractedTitle = extractedTitle!!,
+                        mediaType = category!!,
+                        onConfirm = {
+                            // No torrent engine/library yet (Phase 03/06) - just
+                            // close the loop back to Browse for now.
+                            browseSessionViewModel.clearAfterConfirm()
+                            navController.popBackStack(TopLevelDestination.BROWSE.route, inclusive = false)
+                        },
+                    )
+                } else {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "No magnet link captured yet")
+                }
             }
             composable(PushedRoute.EDIT_SITE) { backStack ->
                 val siteName = backStack.arguments?.getString("siteName") ?: ""

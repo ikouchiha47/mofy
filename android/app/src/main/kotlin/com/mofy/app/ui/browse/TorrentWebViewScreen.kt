@@ -107,8 +107,19 @@ fun TorrentWebViewScreen(
                         }
                     }
 
-                    loadUrl(site.baseUrl)
+                    // Restore prior in-page navigation history if we have it
+                    // (e.g. returning from Confirm Match) instead of always
+                    // reloading the site's base URL from scratch.
+                    val savedState = sessionViewModel.webViewState
+                    if (savedState != null) {
+                        restoreState(savedState)
+                    } else {
+                        loadUrl(site.baseUrl)
+                    }
                 }
+            },
+            onRelease = { webView ->
+                sessionViewModel.webViewState = android.os.Bundle().also { webView.saveState(it) }
             },
         )
 

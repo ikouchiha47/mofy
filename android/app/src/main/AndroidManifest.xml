@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".MofyApplication"
         android:label="Mofy"
         android:allowBackup="false"
         android:theme="@style/Theme.Mofy">

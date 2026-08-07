@@ -25,7 +25,7 @@ data class TmdbResultDto(
 
 enum class MediaType { MOVIE, TV }
 
-private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342"
+const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342"
 
 data class MediaResult(
     val id: Int,

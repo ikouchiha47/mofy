@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mofy — Detail: Link / Play / Watch Together</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0E0E10;
+    --surface: #1A1A1D;
+    --surface-variant: #232327;
+    --surface-container: #2B2B30;
+    --border: #2E2E33;
+    --text: #F2F2F2;
+    --text-dim: #9A9AA2;
+    --accent: #E94560;
+    --accent-blue: #4EA1FF;
+    --good: #3ECF8E;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: #050506;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body {
+    padding: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    align-items: flex-start;
+  }
+  .label {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0 0 10px 2px;
+    letter-spacing: 0.02em;
+  }
+  .frame {
+    width: 360px;
+    background: var(--bg);
+    border-radius: 28px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+  }
+  .statusbar { height: 34px; }
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 16px 12px;
+  }
+  .back {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: var(--surface-variant);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text);
+    font-size: 16px;
+  }
+  .topbar-title { font-size: 15px; font-weight: 600; }
+  .content { padding: 0 16px 24px; }
+
+  /* --- Detail screen --- */
+  .detail-row { display: flex; gap: 16px; }
+  .poster {
+    width: 120px; height: 180px;
+    border-radius: 16px;
+    background: linear-gradient(160deg, #3a2230, #1c1420 60%);
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .poster::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 14px);
+  }
+  .info-col { flex: 1; min-width: 0; }
+  .title { font-size: 20px; font-weight: 700; margin: 0; }
+  .meta-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 6px; flex-wrap: wrap;
+  }
+  .meta { font-size: 13px; color: var(--text-dim); }
+  .sync-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--accent-blue);
+    background: rgba(78,161,255,0.12);
+    border: 1px solid rgba(78,161,255,0.3);
+    border-radius: 8px;
+    padding: 4px 9px;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .sync-icon { font-size: 11px; }
+  .genres { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+
+  .type-sync-row {
+    margin-top: 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .chip-group { display: flex; gap: 6px; }
+  .chip {
+    padding: 4px 11px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface-variant);
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .chip.selected { background: var(--accent); border-color: var(--accent); color: white; }
+
+  .overview {
+    font-size: 13.5px; line-height: 1.55; color: var(--text);
+    margin-top: 16px;
+  }
+
+  .action-row { display: flex; gap: 10px; margin-top: 18px; }
+  .btn {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 13px 10px;
+    border-radius: 10px;
+    font-size: 14px; font-weight: 600;
+    border: none;
+  }
+  .btn-link { background: var(--surface-variant); color: var(--text); border: 1px solid var(--border); flex: 0.8; }
+  .btn-play { background: var(--text); color: #101012; }
+  .btn-watch { background: var(--surface-container); color: var(--text); flex: 1.1; }
+
+  .section-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-dim);
+    margin: 24px 0 10px;
+  }
+  .download-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 12px;
+    margin-bottom: 8px;
+  }
+  .download-icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--surface-variant);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0;
+  }
+  .download-text { flex: 1; min-width: 0; }
+  .download-name {
+    font-size: 13px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .download-sub { font-size: 11px; color: var(--text-dim); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .download-tag {
+    font-size: 10px; padding: 3px 7px; border-radius: 6px;
+    background: rgba(62,207,142,0.14); color: var(--good);
+    flex-shrink: 0;
+  }
+  .add-link-row {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  /* --- Form fields --- */
+  .field { margin-bottom: 14px; }
+  .field-label { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; display: block; }
+  .field-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    color: var(--text);
+  }
+  .field-input.placeholder { color: var(--text-dim); }
+  .form-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+  /* --- Link/browse picker --- */
+  .browse-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .browse-row:last-child { border-bottom: none; }
+  .browse-icon { font-size: 18px; width: 24px; text-align: center; }
+  .browse-name { font-size: 13.5px; flex: 1; }
+  .browse-sub { font-size: 11px; color: var(--text-dim); }
+  .chevron { color: var(--text-dim); font-size: 14px; }
+
+  .picker-note {
+    font-size: 12px; color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+
+  .file-role-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .file-role-label { width: 78px; font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
+  .file-role-value { flex: 1; min-width: 0; font-size: 13px; display: flex; }
+  .file-role-value.unset { color: var(--text-dim); }
+  .fname-base { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fname-ext { flex-shrink: 0; white-space: nowrap; }
+  .pick-btn {
+    font-size: 11px; color: var(--accent-blue);
+    background: rgba(78,161,255,0.12);
+    border-radius: 7px; padding: 5px 10px;
+    flex-shrink: 0; white-space: nowrap;
+  }
+
+  .breadcrumb { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+  .breadcrumb b { color: var(--text); }
+
+  .note-box {
+    background: rgba(233,69,96,0.08);
+    border: 1px solid rgba(233,69,96,0.25);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin-top: 18px;
+  }
+  .note-box b { color: var(--text); }
+</style>
+</head>
+<body>
+
+  <!-- 1. Detail screen with Link / Play / Watch Together -->
+  <div>
+    <p class="label">1 · Detail — linked movie, ready to play</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Details</div>
+      </div>
+      <div class="content">
+        <div class="detail-row">
+          <div class="poster"></div>
+          <div class="info-col">
+            <p class="title">Jack Reacher</p>
+            <p class="meta">2012</p>
+            <p class="genres">Action, Thriller, Crime</p>
+            <div class="type-sync-row">
+              <div class="chip-group">
+                <span class="chip selected">Movie</span>
+                <span class="chip">TV</span>
+              </div>
+              <span class="sync-btn"><span class="sync-icon">&#8635;</span> Sync info</span>
+            </div>
+          </div>
+        </div>
+        <p class="overview">Five people are shot dead in a seemingly random attack. All evidence points to a single suspect: an ex-military sniper who is quickly brought into custody...</p>
+
+        <div class="action-row">
+          <button class="btn btn-link">&#128279; Link</button>
+          <button class="btn btn-play">&#9654; Play</button>
+          <button class="btn btn-watch">&#128101; Watch Together</button>
+        </div>
+
+        <p class="section-title">Downloads</p>
+        <div class="download-row">
+          <div class="download-icon">&#129517;</div>
+          <div class="download-text">
+            <div class="download-name">Jack.Reacher.2012.1080p.BluRay.mkv</div>
+            <div class="download-sub">magnet:?xt=urn:btih:8f3a...</div>
+          </div>
+          <div class="download-tag">Not linked</div>
+        </div>
+        <div class="add-link-row">+ Add magnet or link manually</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Detail with a linked local file -->
+  <div>
+    <p class="label">2 · Detail — after linking to a local file</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Details</div>
+      </div>
+      <div class="content">
+        <div class="detail-row">
+          <div class="poster"></div>
+          <div class="info-col">
+            <p class="title">Jack Reacher</p>
+            <p class="meta">2012</p>
+            <p class="genres">Action, Thriller, Crime</p>
+            <div class="type-sync-row">
+              <div class="chip-group">
+                <span class="chip selected">Movie</span>
+                <span class="chip">TV</span>
+              </div>
+              <span class="sync-btn"><span class="sync-icon">&#8635;</span> Sync info</span>
+            </div>
+          </div>
+        </div>
+        <p class="overview">Five people are shot dead in a seemingly random attack. All evidence points to a single suspect...</p>
+
+        <div class="action-row">
+          <button class="btn btn-link" style="flex:0.8; color: var(--good); border-color: rgba(62,207,142,0.4);">&#9989; Linked</button>
+          <button class="btn btn-play">&#9654; Play</button>
+          <button class="btn btn-watch">&#128101; Watch Together</button>
+        </div>
+
+        <p class="section-title">Downloads</p>
+        <div class="download-row">
+          <div class="download-icon">&#129517;</div>
+          <div class="download-text">
+            <div class="download-name">Jack.Reacher.2012.1080p.BluRay.mkv</div>
+            <div class="download-sub">/storage/emulated/0/Movies/Jack Reacher/movie.mkv</div>
+          </div>
+          <div class="download-tag">Linked</div>
+        </div>
+        <div class="add-link-row">+ Add magnet or link manually</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Type missing prompt -->
+  <div>
+    <p class="label">3 · Detail — media type wasn't set at save time</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Details</div>
+      </div>
+      <div class="content">
+        <div class="detail-row">
+          <div class="poster"></div>
+          <div class="info-col">
+            <p class="title">Supergirl</p>
+            <p class="meta">2026</p>
+            <p class="genres">Action, Adventure, Fantasy</p>
+            <div class="type-sync-row">
+              <div class="chip-group">
+                <span class="chip">Movie</span>
+                <span class="chip">TV</span>
+              </div>
+              <span class="sync-btn"><span class="sync-icon">&#8635;</span> Sync info</span>
+            </div>
+          </div>
+        </div>
+        <p class="note-box"><b>Why this shows up:</b> imported files and some magnet saves don't carry a confirmed Movie/TV type. Play and library sorting need it, so it's asked for here instead of guessed.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Link entry point - choose source -->
+  <div>
+    <p class="label">4 · Tap "Link" — choose what to point at</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Link "Jack Reacher"</div>
+      </div>
+      <div class="content">
+        <p class="picker-note">Point Mofy at a file you've already downloaded (with another app). Mofy doesn't download anything itself.</p>
+        <div class="browse-row">
+          <div class="browse-icon">&#128196;</div>
+          <div class="browse-name">Pick a single video file</div>
+          <div class="chevron">&#8250;</div>
+        </div>
+        <div class="browse-row">
+          <div class="browse-icon">&#128193;</div>
+          <div class="browse-name">Pick a folder</div>
+          <div class="browse-sub" style="margin-left:auto; margin-right:6px;">choose files inside next</div>
+          <div class="chevron">&#8250;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Folder chosen -> assign roles -->
+  <div>
+    <p class="label">5 · Folder picked — assign movie file &amp; subtitles</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Link "Jack Reacher"</div>
+      </div>
+      <div class="content">
+        <div class="breadcrumb">Folder: <b>Jack Reacher (2012)</b></div>
+        <div class="browse-row">
+          <div class="browse-icon">&#127909;</div>
+          <div class="browse-name">Jack.Reacher.2012.1080p.mkv</div>
+          <div class="browse-sub">1.9 GB</div>
+        </div>
+        <div class="browse-row">
+          <div class="browse-icon">&#128221;</div>
+          <div class="browse-name">Jack.Reacher.2012.eng.srt</div>
+          <div class="browse-sub">44 KB</div>
+        </div>
+        <div class="browse-row">
+          <div class="browse-icon">&#128196;</div>
+          <div class="browse-name">sample.mkv</div>
+          <div class="browse-sub">40 MB</div>
+        </div>
+
+        <p class="section-title">Assign roles</p>
+        <div class="file-role-row">
+          <div class="file-role-label">Movie file</div>
+          <div class="file-role-value"><span class="fname-base">Jack.Reacher.2012.1080p</span><span class="fname-ext">.mkv</span></div>
+          <div class="pick-btn">Change</div>
+        </div>
+        <div class="file-role-row">
+          <div class="file-role-label">Subtitles</div>
+          <div class="file-role-value"><span class="fname-base">Jack.Reacher.2012.eng</span><span class="fname-ext">.srt</span></div>
+          <div class="pick-btn">Change</div>
+        </div>
+        <div class="file-role-row">
+          <div class="file-role-label">Subtitles 2</div>
+          <div class="file-role-value unset">Optional — none picked</div>
+          <div class="pick-btn">Pick</div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-outline" style="flex:1; padding:13px;">Cancel</button>
+          <button class="btn btn-primary" style="flex:1; padding:13px;">Save link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Manual magnet/link add form -->
+  <div>
+    <p class="label">6 · "+ Add magnet or link manually"</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Add download</div>
+      </div>
+      <div class="content">
+        <div class="field">
+          <span class="field-label">Name</span>
+          <div class="field-input placeholder">e.g. Jack.Reacher.2012.1080p.BluRay</div>
+        </div>
+        <div class="field">
+          <span class="field-label">Link</span>
+          <div class="field-input placeholder">magnet:?xt=urn:btih:... or any URL</div>
+        </div>
+        <p class="picker-note" style="margin-top: 2px;">Resolution/quality isn't parsed from this yet - it's just stored as typed. Tapping it later opens the same share sheet as any other magnet.</p>
+        <div class="form-actions">
+          <button class="btn btn-outline" style="flex:1; padding:13px;">Cancel</button>
+          <button class="btn btn-primary" style="flex:1; padding:13px;">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Downloads row -> share sheet -->
+  <div>
+    <p class="label">7 · Tapping a download row not yet linked</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Details</div>
+      </div>
+      <div class="content">
+        <p class="section-title" style="margin-top:0;">Downloads</p>
+        <div class="download-row" style="border-color: var(--accent-blue);">
+          <div class="download-icon">&#129517;</div>
+          <div class="download-text">
+            <div class="download-name">Jack.Reacher.2012.1080p.BluRay.mkv</div>
+            <div class="download-sub">magnet:?xt=urn:btih:8f3a...</div>
+          </div>
+          <div class="chevron">&#8250;</div>
+        </div>
+        <p class="picker-note">Tapping this row (when it's not linked yet) opens the Android share sheet, same as Confirm &amp; Download - Mofy hands the magnet to whatever torrent app is installed. Once you've downloaded it there, come back and tap <b>Link</b> to point Mofy at the file.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Library "Add manually" - TMDB search first -->
+  <div>
+    <p class="label">8 · Library → "Add manually" — search TMDB first</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Add manually</div>
+      </div>
+      <div class="content">
+        <div class="field">
+          <span class="field-label">Title</span>
+          <div class="field-input">Some Obscure Documentary</div>
+        </div>
+        <p class="picker-note" style="margin-top:2px;">Searching TMDB - more search sources can be added later.</p>
+        <div class="browse-row">
+          <div class="browse-icon">&#127916;</div>
+          <div>
+            <div class="browse-name">No close matches found</div>
+            <div class="browse-sub">try a different spelling, or enter it manually below</div>
+          </div>
+        </div>
+        <div class="add-link-row" style="margin-top: 16px;">Can't find it? Enter details manually →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. Manual entry form, not on TMDB -->
+  <div>
+    <p class="label">9 · Manual entry — no TMDB match</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar">
+        <div class="back">←</div>
+        <div class="topbar-title">Add manually</div>
+      </div>
+      <div class="content">
+        <div style="display:flex; gap:16px;">
+          <div style="width:110px; flex-shrink:0;">
+            <div class="poster" style="width:110px; height:165px; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text-dim); text-align:center; padding:8px;">No poster yet</div>
+            <button class="btn btn-outline" style="width:100%; margin-top:8px; padding:9px 4px; font-size:11.5px;">&#128269; Search TMDB</button>
+            <button class="btn btn-outline" style="width:100%; margin-top:6px; padding:9px 4px; font-size:11.5px;">&#128193; Upload image</button>
+          </div>
+          <div style="flex:1; min-width:0;">
+            <div class="field">
+              <span class="field-label">Title</span>
+              <div class="field-input">Some Obscure Documentary</div>
+            </div>
+            <div class="field">
+              <span class="field-label">Year</span>
+              <div class="field-input placeholder">e.g. 2019</div>
+            </div>
+            <div class="chip-group">
+              <span class="chip selected">Movie</span>
+              <span class="chip">TV</span>
+            </div>
+          </div>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <span class="field-label">Genres</span>
+          <div class="field-input placeholder">comma separated - e.g. Documentary, History</div>
+        </div>
+        <div class="field">
+          <span class="field-label">Overview</span>
+          <div class="field-input placeholder" style="min-height:56px;">Short description (optional)</div>
+        </div>
+        <p class="picker-note">Poster falls back to a placeholder if nothing is picked - nothing here is required except the title.</p>
+        <div class="form-actions">
+          <button class="btn btn-outline" style="flex:1; padding:13px;">Cancel</button>
+          <button class="btn btn-primary" style="flex:1; padding:13px;">Save to library</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

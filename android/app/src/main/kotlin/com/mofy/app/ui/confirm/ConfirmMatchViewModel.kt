@@ -25,6 +25,10 @@ data class ConfirmMatchUiState(
     val magnetMatchId: Int? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    // Distinguishes "hasn't searched yet" (manual-search screens start
+    // empty) from "searched and found nothing" - only the latter should
+    // show a "no matches" message.
+    val hasSearched: Boolean = false,
 ) {
     val confirmTarget: MediaResult?
         get() = magnetMatchId?.let { id -> results.firstOrNull { it.id == id } }
@@ -52,16 +56,17 @@ class ConfirmMatchViewModel(
             _uiState.value = when (result) {
                 is TmdbResult.Success -> _uiState.value.copy(
                     results = result.data,
-                    // Best-effort default so Confirm & Download isn't cold-
-                    // disabled - the top TMDB result is usually the match,
-                    // but the user can re-pick via the radio marker.
-                    magnetMatchId = result.data.firstOrNull()?.id,
+                    // No default - the user must explicitly pick which
+                    // result the magnet actually matches via the radio.
+                    magnetMatchId = null,
                     isLoading = false,
+                    hasSearched = true,
                 )
                 is TmdbResult.Failure -> _uiState.value.copy(
                     results = emptyList(),
                     isLoading = false,
                     errorMessage = "Search failed: ${result.error}",
+                    hasSearched = true,
                 )
             }
         }

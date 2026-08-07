@@ -20,12 +20,16 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,12 +55,25 @@ fun ConfirmMatchScreen(
     // a locally-picked file to lock onto, unlike the WebView flow where the
     // category was already chosen back on Browse.
     onMediaTypeChange: ((MediaType) -> Unit)? = null,
+    // Magnet taps auto-search immediately (dn= is usually reliable). Import
+    // doesn't - a filename-derived guess is much shakier, so the user edits
+    // the title and explicitly triggers the TMDB search instead of eating a
+    // bad-guess round-trip before they've even seen the field.
+    autoSearch: Boolean = true,
+    // When false, results use the existing radio (magnetMatchId) as a
+    // single-select instead of checkboxes - no separate selection concept
+    // needed. Import sets this: a picked file can only unambiguously link
+    // to one saved item, so multi-select there just creates ambiguity.
+    allowMultiSelect: Boolean = true,
     viewModel: ConfirmMatchViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var editableTitle by remember(extractedTitle) { mutableStateOf(extractedTitle) }
 
-    LaunchedEffect(extractedTitle, mediaType) {
-        viewModel.search(extractedTitle, mediaType)
+    if (autoSearch) {
+        LaunchedEffect(extractedTitle, mediaType) {
+            viewModel.search(extractedTitle, mediaType)
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
@@ -65,30 +82,48 @@ fun ConfirmMatchScreen(
         }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        // Extracted-title banner + locked-category pill - see ADR 0003.
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(12.dp),
-        ) {
-            Text("Extracted from page:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("\"$extractedTitle\"", style = MaterialTheme.typography.titleMedium)
-            val categoryLabel = if (mediaType == MediaType.MOVIE) "movies" else "TV shows"
-            val lockLabel = if (onMediaTypeChange == null) " ▸ category locked" else ""
-            Box(
+        if (autoSearch) {
+            // Extracted-title banner + locked-category pill - see ADR 0003.
+            Column(
                 modifier = Modifier
-                    .padding(top = 6.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(12.dp),
             ) {
-                Text(
-                    "searching $categoryLabel$lockLabel",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
+                Text("Extracted from page:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("\"$extractedTitle\"", style = MaterialTheme.typography.titleMedium)
+                val categoryLabel = if (mediaType == MediaType.MOVIE) "movies" else "TV shows"
+                Box(
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        "searching $categoryLabel ▸ category locked",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+            }
+        } else {
+            // Best-effort filename guess, editable - regex cleanup gets you
+            // close, not exact, so fix it up before searching.
+            OutlinedTextField(
+                value = editableTitle,
+                onValueChange = { editableTitle = it },
+                label = { Text("Title") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { viewModel.search(editableTitle, mediaType) },
+                enabled = editableTitle.isNotBlank(),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.padding(top = 10.dp),
+            ) {
+                Text("🔍 Search TMDB")
             }
         }
 
@@ -96,7 +131,7 @@ fun ConfirmMatchScreen(
             when {
                 uiState.isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 uiState.errorMessage != null -> Text(uiState.errorMessage!!, color = MaterialTheme.colorScheme.error)
-                uiState.results.isEmpty() -> Text("No matches found for \"$extractedTitle\".")
+                uiState.results.isEmpty() && uiState.hasSearched -> Text("No matches found for \"$editableTitle\".")
             }
         }
 
@@ -104,10 +139,11 @@ fun ConfirmMatchScreen(
             items(uiState.results) { result ->
                 ResultCard(
                     result = result,
+                    allowMultiSelect = allowMultiSelect,
                     isChecked = result.id in uiState.checkedIds,
                     onToggle = { viewModel.toggleChecked(result) },
-                    isMagnetMatch = showDownloadAction && result.id == uiState.magnetMatchId,
-                    onSelectMagnetMatch = if (showDownloadAction) {
+                    isSelected = (showDownloadAction || !allowMultiSelect) && result.id == uiState.magnetMatchId,
+                    onSelect = if (showDownloadAction || !allowMultiSelect) {
                         { viewModel.selectMagnetMatch(result) }
                     } else {
                         null
@@ -118,16 +154,20 @@ fun ConfirmMatchScreen(
 
         val checkedCount = uiState.checkedIds.size
         val confirmTarget = uiState.confirmTarget
+        val saveTargets = if (allowMultiSelect) {
+            uiState.results.filter { it.id in uiState.checkedIds }
+        } else {
+            listOfNotNull(confirmTarget)
+        }
+        val saveEnabled = if (allowMultiSelect) checkedCount > 0 else confirmTarget != null
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
-                onClick = {
-                    val toSave = uiState.results.filter { it.id in uiState.checkedIds }
-                    onSaveToLibrary(toSave)
-                },
-                enabled = checkedCount > 0,
+                onClick = { onSaveToLibrary(saveTargets) },
+                enabled = saveEnabled,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.weight(1f),
             ) {
-                Text(if (checkedCount > 0) "Save to Library ($checkedCount)" else "Save to Library")
+                Text(if (allowMultiSelect && checkedCount > 0) "Save to Library ($checkedCount)" else "Save to Library")
             }
             if (showDownloadAction) {
                 Button(
@@ -135,6 +175,7 @@ fun ConfirmMatchScreen(
                     // only ever be one thing, see ConfirmMatchUiState.confirmTarget.
                     onClick = { confirmTarget?.let(onConfirm) },
                     enabled = confirmTarget != null,
+                    shape = MaterialTheme.shapes.small,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Confirm & Download")
@@ -148,12 +189,13 @@ fun ConfirmMatchScreen(
 @Composable
 private fun ResultCard(
     result: MediaResult,
+    allowMultiSelect: Boolean,
     isChecked: Boolean,
     onToggle: () -> Unit,
-    isMagnetMatch: Boolean,
-    onSelectMagnetMatch: (() -> Unit)?,
+    isSelected: Boolean,
+    onSelect: (() -> Unit)?,
 ) {
-    val borderColor = if (isMagnetMatch) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -161,11 +203,11 @@ private fun ResultCard(
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-            .clickable(onClick = onToggle),
+            .clickable(onClick = if (allowMultiSelect) onToggle else { onSelect ?: onToggle }),
     ) {
         Row(modifier = Modifier.padding(10.dp).padding(end = 32.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (onSelectMagnetMatch != null) {
-            RadioButton(selected = isMagnetMatch, onClick = onSelectMagnetMatch)
+        if (onSelect != null) {
+            RadioButton(selected = isSelected, onClick = onSelect)
         }
         if (result.posterUrl != null) {
             AsyncImage(
@@ -201,10 +243,12 @@ private fun ResultCard(
             )
         }
         }
-        Checkbox(
-            checked = isChecked,
-            onCheckedChange = { onToggle() },
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
+        if (allowMultiSelect) {
+            Checkbox(
+                checked = isChecked,
+                onCheckedChange = { onToggle() },
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
     }
 }

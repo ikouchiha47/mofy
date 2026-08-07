@@ -32,6 +32,7 @@ fun MofyTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = MofyColorScheme,
         typography = MofyTypography,
+        shapes = MofyShapes,
         content = content,
     )
 }

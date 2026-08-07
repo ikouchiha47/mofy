@@ -1,83 +1,221 @@
 package com.mofy.app.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mofy.app.data.library.LibraryDao
 import com.mofy.app.data.library.LibraryDownload
 import com.mofy.app.data.library.LibraryItem
-import com.mofy.app.data.library.toMediaResult
+import com.mofy.app.data.tmdb.GenreRepository
+import com.mofy.app.data.tmdb.MediaType
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 
 @Composable
 fun DetailScreen(
     contentPadding: PaddingValues,
-    itemKey: String,
+    itemId: String,
     libraryDao: LibraryDao,
+    genreRepository: GenreRepository,
     onSearchForTorrent: (LibraryItem) -> Unit,
+    onLink: (LibraryItem) -> Unit,
 ) {
-    val item by libraryDao.observeByKey(itemKey).collectAsState(initial = null)
-    val downloads by (item?.let { libraryDao.observeDownloads(it.key) } ?: emptyFlow())
+    val context = LocalContext.current
+    val item by libraryDao.observeById(itemId).collectAsState(initial = null)
+    val downloads by (item?.let { libraryDao.observeDownloads(it.id) } ?: emptyFlow())
         .collectAsState(initial = emptyList())
+    val activeLink by (item?.let { libraryDao.observeActiveLink(it.id) } ?: emptyFlow())
+        .collectAsState(initial = null)
+    val coroutineScope = rememberCoroutineScope()
 
     val current = item ?: return
-    val result = current.toMediaResult()
-
-    Column(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
-        if (result.posterUrl != null) {
-            AsyncImage(
-                model = result.posterUrl,
-                contentDescription = "${current.title} poster",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp)),
-            )
-        }
-        Text(current.title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 12.dp))
-        Text(
-            "${current.year ?: "—"} · ${current.mediaType}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(current.overview, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
-
-        Text(
-            "Downloads",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-        )
-        if (downloads.isEmpty()) {
-            Button(onClick = { onSearchForTorrent(current) }) {
-                Text("Search for torrent")
-            }
+    var genreNames by remember(current.id) { mutableStateOf(emptyList<String>()) }
+    LaunchedEffect(current.id) {
+        genreNames = if (current.resolvedGenreIds.isNotEmpty()) {
+            genreRepository.resolveNames(current.resolvedGenreIds)
         } else {
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(downloads) { download -> DownloadRow(download) }
+            current.resolvedGenreNames
+        }
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                if (current.posterUrl != null) {
+                    AsyncImage(
+                        model = current.posterUrl,
+                        contentDescription = "${current.title} poster",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .width(120.dp)
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(16.dp)),
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(current.title, style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        current.year ?: "—",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    if (genreNames.isNotEmpty()) {
+                        Text(
+                            genreNames.joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    // Always editable, not just shown when missing - Browse-
+                    // derived types can be wrong too, see ADR 0004.
+                    Row(modifier = Modifier.padding(top = 8.dp)) {
+                        MediaTypeChip(
+                            label = "Movie",
+                            selected = current.mediaType == MediaType.MOVIE.name,
+                            onClick = {
+                                coroutineScope.launch {
+                                    libraryDao.update(current.copy(mediaType = MediaType.MOVIE.name))
+                                }
+                            },
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        MediaTypeChip(
+                            label = "TV",
+                            selected = current.mediaType == MediaType.TV.name,
+                            onClick = {
+                                coroutineScope.launch {
+                                    libraryDao.update(current.copy(mediaType = MediaType.TV.name))
+                                }
+                            },
+                        )
+                    }
+                }
             }
-            Button(onClick = { onSearchForTorrent(current) }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Search for another")
+            Text(current.overview, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 16.dp))
+
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 18.dp)) {
+                OutlinedButton(
+                    onClick = { onLink(current) },
+                    shape = MaterialTheme.shapes.small,
+                    colors = if (activeLink != null) {
+                        androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = androidx.compose.ui.graphics.Color(0xFF3ECF8E))
+                    } else {
+                        androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
+                    },
+                    modifier = Modifier.weight(0.8f),
+                ) {
+                    Text(if (activeLink != null) "✅ Linked" else "🔗 Link")
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Button(
+                    onClick = {
+                        val link = activeLink
+                        if (link == null) {
+                            android.widget.Toast.makeText(context, "Nothing linked yet - tap Link first", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            val playIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(android.net.Uri.parse(link.movieUri), "video/*")
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            runCatching { context.startActivity(playIntent) }
+                                .onFailure {
+                                    android.widget.Toast.makeText(context, "No app can play this file", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                        }
+                    },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("▶ Play")
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Button(
+                    onClick = {
+                        android.widget.Toast.makeText(context, "Watch Together is coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1.1f),
+                ) {
+                    Text("👥 Watch Together")
+                }
+            }
+
+            Text(
+                "Downloads",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+            )
+            if (downloads.isEmpty()) {
+                Button(onClick = { onSearchForTorrent(current) }, shape = MaterialTheme.shapes.small) {
+                    Text("Search")
+                }
             }
         }
+        items(downloads) { download -> DownloadRow(download) }
+        if (downloads.isNotEmpty()) {
+            item {
+                Button(
+                    onClick = { onSearchForTorrent(current) },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text("Search")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaTypeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 4.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -35,9 +35,10 @@ import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.library.LibraryDownload
 import com.mofy.app.data.library.LibrarySource
 import com.mofy.app.data.library.ResourceType
+import com.mofy.app.data.library.downloadDedupeKey
 import com.mofy.app.data.library.magnetInfoHash
 import com.mofy.app.data.library.toLibraryItem
-import com.mofy.app.data.sites.SiteCatalog
+import com.mofy.app.data.sites.SiteRepository
 import com.mofy.app.data.sites.TorrentSite
 import com.mofy.app.ui.browse.BrowseScreen
 import com.mofy.app.ui.browse.BrowseSessionViewModel
@@ -51,6 +52,7 @@ import com.mofy.app.ui.nav.PlaceholderScreen
 import com.mofy.app.ui.nav.PushedRoute
 import com.mofy.app.ui.nav.TopLevelDestination
 import com.mofy.app.ui.settings.SettingsScreen
+import com.mofy.app.ui.sites.EditSiteScreen
 import com.mofy.app.ui.theme.MofyTheme
 
 class MainActivity : ComponentActivity() {
@@ -72,8 +74,8 @@ class MainActivity : ComponentActivity() {
 
 private const val ROUTE_WEBVIEW = "webview/{siteName}"
 private const val ROUTE_CONFIRM_MATCH = "confirm_match"
-private const val ROUTE_IMPORT_CONFIRM = "import_confirm/{title}"
-private const val ROUTE_DETAIL = "detail/{key}"
+private const val ROUTE_IMPORT_CONFIRM = "import_confirm/{title}/{uri}"
+private const val ROUTE_DETAIL = "detail/{id}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +88,8 @@ private fun MofyApp() {
 
     val context = LocalContext.current
     val database = remember { AppDatabase.get(context) }
+    val genreRepository = remember { com.mofy.app.data.tmdb.GenreRepository(dao = database.genreDao()) }
+    val siteRepository = remember { SiteRepository(dao = database.siteDao()) }
     val coroutineScope = rememberCoroutineScope()
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -129,6 +133,14 @@ private fun MofyApp() {
                 )
                 PushedRoute.EDIT_SITE_NEW -> TopAppBar(
                     title = { Text("Add Site") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+                PushedRoute.LINK -> TopAppBar(
+                    title = { Text("Link") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -201,13 +213,14 @@ private fun MofyApp() {
                 HomeScreen(
                     contentPadding = contentPadding,
                     libraryDao = database.libraryDao(),
-                    onItemClick = { item -> navController.navigate("detail/${item.key}") },
+                    onItemClick = { item -> navController.navigate("detail/${item.id}") },
                 )
             }
             composable(TopLevelDestination.BROWSE.route) {
                 BrowseScreen(
                     contentPadding = contentPadding,
                     sessionViewModel = browseSessionViewModel,
+                    siteRepository = siteRepository,
                     onSitePicked = { site: TorrentSite ->
                         navController.navigate("webview/${site.name}")
                     },
@@ -220,9 +233,10 @@ private fun MofyApp() {
             composable(TopLevelDestination.LIBRARY.route) {
                 LibraryScreen(
                     contentPadding = contentPadding,
-                    onImportPicked = { guessedTitle ->
-                        val encoded = java.net.URLEncoder.encode(guessedTitle, "UTF-8")
-                        navController.navigate("import_confirm/$encoded")
+                    onImportPicked = { guessedTitle, uri ->
+                        val encodedTitle = java.net.URLEncoder.encode(guessedTitle, "UTF-8")
+                        val encodedUri = java.net.URLEncoder.encode(uri.toString(), "UTF-8")
+                        navController.navigate("import_confirm/$encodedTitle/$encodedUri")
                     },
                 )
             }
@@ -231,7 +245,10 @@ private fun MofyApp() {
             }
             composable(ROUTE_WEBVIEW) { backStack ->
                 val siteName = backStack.arguments?.getString("siteName") ?: ""
-                val site = SiteCatalog.byName(siteName)
+                val siteState by androidx.compose.runtime.produceState<TorrentSite?>(null, siteName) {
+                    value = siteRepository.getByName(siteName)
+                }
+                val site = siteState
                 if (site != null) {
                     TorrentWebViewScreen(
                         contentPadding = contentPadding,
@@ -273,13 +290,20 @@ private fun MofyApp() {
                                 // different releases of the same title both stay.
                                 coroutineScope.launch {
                                     val libraryItem = confirmed.toLibraryItem(LibrarySource.SAVED)
-                                    database.libraryDao().upsert(libraryItem)
+                                    database.libraryDao().saveConfirmedMatch(libraryItem)
+                                    val saved = database.libraryDao().getByTmdbMatch(
+                                        libraryItem.tmdbId!!,
+                                        libraryItem.mediaType!!,
+                                    ) ?: libraryItem
+                                    val infoHash = magnetInfoHash(uri)
                                     database.libraryDao().insertDownload(
                                         LibraryDownload(
-                                            libraryItemKey = libraryItem.key,
+                                            libraryItemKey = saved.id,
                                             resourceType = ResourceType.MAGNET.name,
+                                            name = null,
                                             uri = uri,
-                                            infoHash = magnetInfoHash(uri),
+                                            infoHash = infoHash,
+                                            dedupeKey = downloadDedupeKey(infoHash, null, uri),
                                             addedAtEpochMillis = System.currentTimeMillis(),
                                         ),
                                     )
@@ -290,7 +314,7 @@ private fun MofyApp() {
                         },
                         onSaveToLibrary = { results ->
                             coroutineScope.launch {
-                                results.forEach { database.libraryDao().upsert(it.toLibraryItem(LibrarySource.SAVED)) }
+                                results.forEach { database.libraryDao().saveConfirmedMatch(it.toLibraryItem(LibrarySource.SAVED)) }
                             }
                             android.widget.Toast.makeText(
                                 context,
@@ -309,6 +333,8 @@ private fun MofyApp() {
             composable(ROUTE_IMPORT_CONFIRM) { backStack ->
                 val encodedTitle = backStack.arguments?.getString("title") ?: ""
                 val title = java.net.URLDecoder.decode(encodedTitle, "UTF-8")
+                val encodedUri = backStack.arguments?.getString("uri") ?: ""
+                val importUri = java.net.URLDecoder.decode(encodedUri, "UTF-8")
                 var importMediaType by androidx.compose.runtime.remember {
                     androidx.compose.runtime.mutableStateOf(com.mofy.app.data.tmdb.MediaType.MOVIE)
                 }
@@ -320,10 +346,35 @@ private fun MofyApp() {
                     mediaType = importMediaType,
                     onMediaTypeChange = { importMediaType = it },
                     showDownloadAction = false,
+                    // Filename-derived guesses are shaky - let the user fix
+                    // the title before spending a TMDB round-trip on it.
+                    autoSearch = false,
+                    // A picked file can only unambiguously link to one saved
+                    // item - reuses the radio (magnetMatchId) as a plain
+                    // single-select instead of the checkbox multi-select.
+                    allowMultiSelect = false,
                     onConfirm = {},
                     onSaveToLibrary = { results ->
                         coroutineScope.launch {
-                            results.forEach { database.libraryDao().upsert(it.toLibraryItem(LibrarySource.IMPORTED)) }
+                            results.forEach { result ->
+                                val libraryItem = result.toLibraryItem(LibrarySource.IMPORTED)
+                                database.libraryDao().saveConfirmedMatch(libraryItem)
+                                val saved = database.libraryDao().getByTmdbMatch(
+                                    libraryItem.tmdbId!!,
+                                    libraryItem.mediaType!!,
+                                ) ?: libraryItem
+                                database.libraryDao().addAndActivateLink(
+                                    com.mofy.app.data.library.LibraryLink(
+                                        libraryItemKey = saved.id,
+                                        label = null,
+                                        movieUri = importUri,
+                                        subtitleUri = null,
+                                        subtitle2Uri = null,
+                                        isActive = false,
+                                        linkedAtEpochMillis = System.currentTimeMillis(),
+                                    ),
+                                )
+                            }
                         }
                         android.widget.Toast.makeText(
                             context,
@@ -335,15 +386,17 @@ private fun MofyApp() {
                 )
             }
             composable(ROUTE_DETAIL) { backStack ->
-                val key = backStack.arguments?.getString("key") ?: ""
+                val id = backStack.arguments?.getString("id") ?: ""
                 DetailScreen(
                     contentPadding = contentPadding,
-                    itemKey = key,
+                    itemId = id,
                     libraryDao = database.libraryDao(),
+                    genreRepository = genreRepository,
                     onSearchForTorrent = { item ->
                         browseSessionViewModel.startSearch(
                             item.title,
-                            com.mofy.app.data.tmdb.MediaType.valueOf(item.mediaType),
+                            item.mediaType?.let { com.mofy.app.data.tmdb.MediaType.valueOf(it) }
+                                ?: com.mofy.app.data.tmdb.MediaType.MOVIE,
                         )
                         navController.navigate(TopLevelDestination.BROWSE.route) {
                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -351,14 +404,80 @@ private fun MofyApp() {
                             restoreState = true
                         }
                     },
+                    onLink = { item -> navController.navigate(PushedRoute.link(item.id)) },
+                )
+            }
+            composable(PushedRoute.LINK) { backStack ->
+                val linkItemId = backStack.arguments?.getString("itemId") ?: ""
+                com.mofy.app.ui.link.LinkScreen(
+                    contentPadding = contentPadding,
+                    onSaveSingleFile = { uri ->
+                        coroutineScope.launch {
+                            database.libraryDao().addAndActivateLink(
+                                com.mofy.app.data.library.LibraryLink(
+                                    libraryItemKey = linkItemId,
+                                    label = null,
+                                    movieUri = uri.toString(),
+                                    subtitleUri = null,
+                                    subtitle2Uri = null,
+                                    isActive = false,
+                                    linkedAtEpochMillis = System.currentTimeMillis(),
+                                ),
+                            )
+                            navController.popBackStack()
+                        }
+                    },
+                    onSaveFolderLink = { movie, subtitle, subtitle2 ->
+                        coroutineScope.launch {
+                            database.libraryDao().addAndActivateLink(
+                                com.mofy.app.data.library.LibraryLink(
+                                    libraryItemKey = linkItemId,
+                                    label = null,
+                                    movieUri = movie.toString(),
+                                    subtitleUri = subtitle?.toString(),
+                                    subtitle2Uri = subtitle2?.toString(),
+                                    isActive = false,
+                                    linkedAtEpochMillis = System.currentTimeMillis(),
+                                ),
+                            )
+                            navController.popBackStack()
+                        }
+                    },
                 )
             }
             composable(PushedRoute.EDIT_SITE) { backStack ->
                 val siteName = backStack.arguments?.getString("siteName") ?: ""
-                PlaceholderScreen(contentPadding = contentPadding, note = "Editing \"$siteName\" - Edit Site screen lands next")
+                val existingState by androidx.compose.runtime.produceState<TorrentSite?>(null, siteName) {
+                    value = siteRepository.getByName(siteName)
+                }
+                EditSiteScreen(
+                    contentPadding = contentPadding,
+                    existing = existingState,
+                    onSave = { site ->
+                        coroutineScope.launch {
+                            siteRepository.upsert(site)
+                            navController.popBackStack()
+                        }
+                    },
+                    onDelete = {
+                        coroutineScope.launch {
+                            siteRepository.delete(siteName)
+                            navController.popBackStack()
+                        }
+                    },
+                )
             }
             composable(PushedRoute.EDIT_SITE_NEW) {
-                PlaceholderScreen(contentPadding = contentPadding, note = "Edit Site screen lands next")
+                EditSiteScreen(
+                    contentPadding = contentPadding,
+                    existing = null,
+                    onSave = { site ->
+                        coroutineScope.launch {
+                            siteRepository.upsert(site)
+                            navController.popBackStack()
+                        }
+                    },
+                )
             }
         }
     }

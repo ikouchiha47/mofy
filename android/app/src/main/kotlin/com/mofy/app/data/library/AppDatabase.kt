@@ -4,10 +4,26 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.mofy.app.data.sites.SiteDao
+import com.mofy.app.data.sites.TorrentSiteEntity
+import com.mofy.app.data.tmdb.GenreDao
+import com.mofy.app.data.tmdb.GenreEntity
 
-@Database(entities = [LibraryItem::class, LibraryDownload::class], version = 2, exportSchema = false)
+@Database(
+    entities = [
+        LibraryItem::class,
+        LibraryDownload::class,
+        LibraryLink::class,
+        GenreEntity::class,
+        TorrentSiteEntity::class,
+    ],
+    version = 5,
+    exportSchema = false,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
+    abstract fun genreDao(): GenreDao
+    abstract fun siteDao(): SiteDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

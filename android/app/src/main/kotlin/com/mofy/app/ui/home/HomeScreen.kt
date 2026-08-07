@@ -27,8 +27,6 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mofy.app.data.library.LibraryDao
 import com.mofy.app.data.library.LibraryItem
-import com.mofy.app.data.tmdb.MediaResult
-import com.mofy.app.data.library.toMediaResult
 import kotlinx.coroutines.flow.emptyFlow
 
 /**
@@ -60,7 +58,7 @@ fun HomeScreen(contentPadding: PaddingValues, libraryDao: LibraryDao? = null, on
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp),
             ) {
-                items(items, key = { it.key }) { item ->
+                items(items, key = { it.id }) { item ->
                     LibraryPosterCard(item, onClick = { onItemClick(item) })
                 }
             }
@@ -70,11 +68,10 @@ fun HomeScreen(contentPadding: PaddingValues, libraryDao: LibraryDao? = null, on
 
 @Composable
 private fun LibraryPosterCard(item: LibraryItem, onClick: () -> Unit) {
-    val result: MediaResult = item.toMediaResult()
     Column(modifier = Modifier.width(96.dp).clickable(onClick = onClick)) {
-        if (result.posterUrl != null) {
+        if (item.posterUrl != null) {
             AsyncImage(
-                model = result.posterUrl,
+                model = item.posterUrl,
                 contentDescription = "${item.title} poster",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

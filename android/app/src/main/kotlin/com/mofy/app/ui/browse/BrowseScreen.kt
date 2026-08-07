@@ -30,10 +30,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.mofy.app.data.sites.SiteCatalog
+import com.mofy.app.data.sites.SiteRepository
 import com.mofy.app.data.sites.TorrentSite
 import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.ui.components.CategorySegmentedControl
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Browse tab. Category is a segmented control here, not a separate decision
@@ -43,9 +44,11 @@ import com.mofy.app.ui.components.CategorySegmentedControl
 fun BrowseScreen(
     contentPadding: PaddingValues,
     sessionViewModel: BrowseSessionViewModel,
+    siteRepository: SiteRepository? = null,
     onSitePicked: (TorrentSite) -> Unit,
     onEditSite: (TorrentSite?) -> Unit,
 ) {
+    val allSites by (siteRepository?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
     val category by sessionViewModel.selectedCategory.collectAsState()
     val searchContext by sessionViewModel.searchContext.collectAsState()
     // A search context (from a detail page's "search for torrent") pins the
@@ -72,12 +75,16 @@ fun BrowseScreen(
             onSelect = { sessionViewModel.selectCategory(it) },
         )
 
-        val sites = SiteCatalog.byCategory(currentCategory)
+        val sites = allSites.filter { it.category == currentCategory }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(sites) { site ->
                 SiteRow(
                     site = site,
                     onClick = {
+                        // Resets webViewState - without this, switching sites
+                        // would restore() the *previous* site's saved WebView
+                        // history/state into the new site's WebView instance.
+                        sessionViewModel.selectSite(site)
                         val loadUrl = searchContext?.let { site.searchUrl(it.title) }
                         sessionViewModel.consumeSearchContext(loadUrl)
                         onSitePicked(site)

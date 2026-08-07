@@ -56,6 +56,23 @@ fun TorrentWebViewScreen(
                     )
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    // Strip the "; wv)" token Android's WebView adds to its
+                    // default UA - it marks the request as coming from an
+                    // embedded WebView rather than a real browser, and sites
+                    // behind Cloudflare (e.g. EZTV) hard-reset the connection
+                    // when they see it, even though the same site loads fine
+                    // in Chrome itself.
+                    settings.userAgentString = settings.userAgentString.replace("; wv", "")
+                    // Sites without proper mobile CSS (e.g. EZTV) render at
+                    // WebView's default ~980px virtual viewport otherwise,
+                    // forcing pan in both directions - this is the same
+                    // "shrink desktop layout to fit" trick Chrome mobile
+                    // does automatically for non-responsive pages.
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.setSupportZoom(true)
+                    settings.builtInZoomControls = true
+                    settings.displayZoomControls = false
                     // Ad overlays rely on window.open()/target=_blank popups -
                     // refusing to support multiple windows and never creating
                     // one blocks them at the source.
@@ -114,7 +131,14 @@ fun TorrentWebViewScreen(
                     if (savedState != null) {
                         restoreState(savedState)
                     } else {
-                        loadUrl(sessionViewModel.consumePendingLoadUrl() ?: site.baseUrl)
+                        val pendingUrl = sessionViewModel.consumePendingLoadUrl()
+                        if (pendingUrl != null) {
+                            // GET only - see SiteSearchConfig for why POST is parked.
+                            val headers = site.searchConfig?.headers?.takeIf { it.isNotEmpty() }
+                            if (headers != null) loadUrl(pendingUrl, headers) else loadUrl(pendingUrl)
+                        } else {
+                            loadUrl(site.baseUrl)
+                        }
                     }
                 }
             },

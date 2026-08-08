@@ -1,4 +1,4 @@
-package com.mofy.app.ui.library
+package com.mofy.app.ui.search
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,18 +7,16 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,10 +33,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mofy.app.data.library.LibraryDao
@@ -51,35 +50,23 @@ import com.mofy.app.ui.components.FilterChip
 import com.mofy.app.ui.components.LibraryListRow
 import com.mofy.app.ui.components.TypeSegmentedControl
 import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.launch
 
 /**
- * Import entry point + the actual library listing - was import-button-only,
- * with nothing showing what was actually in the library outside Home's
- * "Recently Added" row. Reuses Detail's Link picker UI for import (see
- * PushedRoute.IMPORT_LINK in MainActivity). Each row has a delete action -
- * saveConfirmedMatch merges on (tmdbId, mediaType) rather than erroring, so
- * this isn't strictly needed to fix a crash, but it's the clean way to
- * fully remove and cleanly re-import something instead of it silently
- * merging into the existing row.
- *
- * Filtering is split in two, deliberately: Type is a segmented control
- * (mutually exclusive, few options, room for e.g. Music later) - Genre (and
- * any future filter dimension) lives behind a "Filters" sheet instead of a
- * second permanent row, since that's the one that'll actually grow.
+ * Search across the whole library, reached from Home's search icon - not
+ * a separate index, just LibraryDao.searchLibrary (FTS + spellfix1 fuzzy
+ * fallback, see LibraryDao) combined with the same Type/Genre filters
+ * LibraryScreen uses. Shares its filter UI via ui/components -
+ * LibraryFilterControls.kt - rather than duplicating it.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun LibraryScreen(
+fun SearchScreen(
     contentPadding: PaddingValues,
     libraryDao: LibraryDao? = null,
     genreRepository: GenreRepository? = null,
-    onImportClick: () -> Unit,
-    onAddManuallyClick: () -> Unit = {},
     onItemClick: (LibraryItem) -> Unit = {},
 ) {
     val items by (libraryDao?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
-    val coroutineScope = rememberCoroutineScope()
 
     var selectedType by remember { mutableStateOf<MediaType?>(null) }
     var selectedGenreId by remember { mutableStateOf<Int?>(null) }
@@ -110,12 +97,13 @@ fun LibraryScreen(
         }
     }
     val activeFilterCount = listOfNotNull(selectedGenreId).size
+    val focusRequester = remember { FocusRequester() }
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search title or overview") },
+            placeholder = { Text("Search your library") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = if (searchQuery.isNotEmpty()) {
                 { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
@@ -123,26 +111,12 @@ fun LibraryScreen(
                 null
             },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .focusRequester(focusRequester),
         )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-            OutlinedButton(
-                onClick = onImportClick,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Import from device", modifier = Modifier.padding(start = 8.dp))
-            }
-            OutlinedButton(
-                onClick = onAddManuallyClick,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Add manually")
-            }
-        }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
         if (items.isNotEmpty()) {
             TypeSegmentedControl(
@@ -166,25 +140,16 @@ fun LibraryScreen(
             }
         }
 
-        if (items.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "Nothing in your library yet — head to Browse to find something.",
-                    textAlign = TextAlign.Center,
-                )
+        when {
+            searchQuery.isBlank() -> Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text("Search your library by title, overview, or alternate name.", textAlign = TextAlign.Center)
             }
-        } else if (filtered.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text("Nothing matches this filter.", textAlign = TextAlign.Center)
+            filtered.isEmpty() -> Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text("Nothing matches \"$searchQuery\".", textAlign = TextAlign.Center)
             }
-        } else {
-            LazyColumn {
+            else -> LazyColumn {
                 items(filtered, key = { it.id }) { item ->
-                    LibraryListRow(
-                        item,
-                        onClick = { onItemClick(item) },
-                        onDelete = { coroutineScope.launch { libraryDao?.deleteLibraryItem(item.id) } },
-                    )
+                    LibraryListRow(item, onClick = { onItemClick(item) })
                 }
             }
         }
@@ -239,4 +204,3 @@ fun LibraryScreen(
         }
     }
 }
-

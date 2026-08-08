@@ -109,7 +109,7 @@ private fun MofyApp() {
                         IconButton(onClick = { /* Watch Together join sheet - Phase 13 */ }) {
                             Icon(Icons.Filled.Groups, contentDescription = "Join a Watch Together session")
                         }
-                        IconButton(onClick = { /* Search screen - Phase 09 */ }) {
+                        IconButton(onClick = { navController.navigate(PushedRoute.SEARCH) }) {
                             Icon(Icons.Filled.Search, contentDescription = "Search")
                         }
                     },
@@ -165,6 +165,14 @@ private fun MofyApp() {
                 )
                 PushedRoute.MANUAL_ENTRY_FORM -> TopAppBar(
                     title = { Text("Add manually") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+                PushedRoute.SEARCH -> TopAppBar(
+                    title = { Text("Search") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -301,6 +309,14 @@ private fun MofyApp() {
                         android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
                         navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
                     },
+                )
+            }
+            composable(PushedRoute.SEARCH) {
+                com.mofy.app.ui.search.SearchScreen(
+                    contentPadding = contentPadding,
+                    libraryDao = database.libraryDao(),
+                    genreRepository = genreRepository,
+                    onItemClick = { item -> navController.navigate("detail/${item.id}") },
                 )
             }
             composable(PushedRoute.IMPORT_LINK) {

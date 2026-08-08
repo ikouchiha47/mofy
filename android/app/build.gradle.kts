@@ -69,6 +69,9 @@ android {
         getByName("main") {
             kotlin.directories += "src/main/kotlin"
         }
+        getByName("test") {
+            kotlin.directories += "src/test/kotlin"
+        }
     }
 }
 
@@ -101,4 +104,15 @@ dependencies {
     implementation("androidx.sqlite:sqlite-bundled:2.6.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Architecture rules (Konsist works on Kotlin source/PSI, not bytecode -
+    // can express Kotlin/Compose-specific conventions ArchUnit can't easily
+    // see) - integration smoke test only for now, real rubric TBD.
+    testImplementation("com.lemonappdev:konsist:0.17.3")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }

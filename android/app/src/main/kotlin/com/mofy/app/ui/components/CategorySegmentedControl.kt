@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mofy.app.data.tmdb.MediaType
@@ -35,7 +36,8 @@ fun CategorySegmentedControl(selected: MediaType, onSelect: (MediaType) -> Unit,
 
 @Composable
 private fun SegmentOption(label: String, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val background = if (isSelected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant
+    val background = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    val textColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
             .background(background, RoundedCornerShape(8.dp))
@@ -43,6 +45,6 @@ private fun SegmentOption(label: String, isSelected: Boolean, modifier: Modifier
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+        Text(label, color = textColor, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
     }
 }

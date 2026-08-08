@@ -12,11 +12,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -87,6 +95,15 @@ fun DetailScreen(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(current.title, style = MaterialTheme.typography.headlineSmall)
+                    if (current.originalTitle != null) {
+                        Row(modifier = Modifier.padding(top = 4.dp)) {
+                            if (current.romanizedOriginalTitle != null) {
+                                com.mofy.app.ui.components.Tag(current.romanizedOriginalTitle)
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            com.mofy.app.ui.components.Tag(current.originalTitle)
+                        }
+                    }
                     Text(
                         current.year ?: "—",
                         style = MaterialTheme.typography.bodyMedium,
@@ -128,51 +145,65 @@ fun DetailScreen(
             }
             Text(current.overview, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 16.dp))
 
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 18.dp)) {
-                OutlinedButton(
-                    onClick = { onLink(current) },
-                    shape = MaterialTheme.shapes.small,
-                    colors = if (activeLink != null) {
-                        androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = androidx.compose.ui.graphics.Color(0xFF3ECF8E))
-                    } else {
-                        androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
-                    },
-                    modifier = Modifier.weight(0.8f),
-                ) {
-                    Text(if (activeLink != null) "✅ Linked" else "🔗 Link")
+            val isLinked = activeLink != null
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
+                FeedbackIconButton(Icons.Filled.ThumbUp, "Like", context)
+                Spacer(modifier = Modifier.width(28.dp))
+                FeedbackIconButton(Icons.Filled.Whatshot, "Super Like", context)
+                Spacer(modifier = Modifier.width(28.dp))
+                FeedbackIconButton(Icons.Filled.ThumbDown, "Not Interested", context)
+            }
+            Button(
+                onClick = {
+                    val link = activeLink
+                    if (link != null) {
+                        val playIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(android.net.Uri.parse(link.movieUri), "video/*")
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        runCatching { context.startActivity(playIntent) }
+                            .onFailure {
+                                android.widget.Toast.makeText(context, "No app can play this file", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                    }
+                },
+                enabled = isLinked,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            ) {
+                Text("▶ Play")
+            }
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                if (isLinked) {
+                    Button(
+                        onClick = { onLink(current) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3ECF8E)),
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Linked")
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { onLink(current) },
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Link")
+                    }
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Button(
                     onClick = {
-                        val link = activeLink
-                        if (link == null) {
-                            android.widget.Toast.makeText(context, "Nothing linked yet - tap Link first", android.widget.Toast.LENGTH_SHORT).show()
-                        } else {
-                            val playIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                setDataAndType(android.net.Uri.parse(link.movieUri), "video/*")
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            runCatching { context.startActivity(playIntent) }
-                                .onFailure {
-                                    android.widget.Toast.makeText(context, "No app can play this file", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                        }
+                        android.widget.Toast.makeText(context, "Watch Party is coming soon", android.widget.Toast.LENGTH_SHORT).show()
                     },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("▶ Play")
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Button(
-                    onClick = {
-                        android.widget.Toast.makeText(context, "Watch Together is coming soon", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.weight(1.1f),
-                ) {
-                    Text("👥 Watch Together")
+                    Text("Watch Party")
                 }
             }
 
@@ -199,6 +230,26 @@ fun DetailScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FeedbackIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, context: android.content.Context) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable {
+                android.widget.Toast.makeText(context, "$label - not implemented yet", android.widget.Toast.LENGTH_SHORT).show()
+            },
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp).align(androidx.compose.ui.Alignment.Center),
+        )
     }
 }
 

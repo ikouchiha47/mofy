@@ -1,5 +1,9 @@
 package com.mofy.app.data.library
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+
 /**
  * Best-effort title guess from a release-style filename - regex heuristics,
  * not NLP. This is a solved problem (Radarr/Sonarr/Filebot all do the same
@@ -39,4 +43,13 @@ fun guessTitleFromFileName(rawName: String): String {
 
     val guess = titleTokens.joinToString(" ").trim()
     return guess.ifBlank { withoutExt.trim() }
+}
+
+fun guessTitleFromUri(context: Context, uri: Uri): String {
+    val displayName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
+    } ?: uri.lastPathSegment ?: "Unknown"
+
+    return guessTitleFromFileName(displayName)
 }

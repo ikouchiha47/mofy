@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -131,7 +133,24 @@ fun ConfirmMatchScreen(
             when {
                 uiState.isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 uiState.errorMessage != null -> Text(uiState.errorMessage!!, color = MaterialTheme.colorScheme.error)
-                uiState.results.isEmpty() && uiState.hasSearched -> Text("No matches found for \"$editableTitle\".")
+                uiState.results.isEmpty() && uiState.hasSearched -> Column {
+                    val currentTabLabel = if (mediaType == MediaType.MOVIE) "Movies" else "TV Shows"
+                    Text("No matches found for \"$editableTitle\" in $currentTabLabel.")
+                    if (onMediaTypeChange != null) {
+                        val otherType = if (mediaType == MediaType.MOVIE) MediaType.TV else MediaType.MOVIE
+                        val otherLabel = if (otherType == MediaType.MOVIE) "Movies" else "TV Shows"
+                        Text(
+                            "Try the $otherLabel tab instead?",
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clickable {
+                                    onMediaTypeChange(otherType)
+                                    viewModel.search(editableTitle, otherType)
+                                },
+                        )
+                    }
+                }
             }
         }
 
@@ -229,6 +248,15 @@ private fun ResultCard(
         }
         Column(modifier = Modifier.padding(start = 12.dp)) {
             Text(result.title, style = MaterialTheme.typography.titleSmall)
+            if (result.originalTitle != null) {
+                Row(modifier = Modifier.padding(top = 4.dp)) {
+                    if (result.romanizedOriginalTitle != null) {
+                        com.mofy.app.ui.components.Tag(result.romanizedOriginalTitle)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    com.mofy.app.ui.components.Tag(result.originalTitle)
+                }
+            }
             Text(
                 "${result.year ?: "—"}",
                 style = MaterialTheme.typography.bodySmall,

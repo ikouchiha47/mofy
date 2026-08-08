@@ -147,6 +147,14 @@ private fun MofyApp() {
                         }
                     },
                 )
+                PushedRoute.IMPORT_LINK -> TopAppBar(
+                    title = { Text("Import") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
                 ROUTE_DETAIL -> TopAppBar(
@@ -233,10 +241,31 @@ private fun MofyApp() {
             composable(TopLevelDestination.LIBRARY.route) {
                 LibraryScreen(
                     contentPadding = contentPadding,
-                    onImportPicked = { guessedTitle, uri ->
-                        val encodedTitle = java.net.URLEncoder.encode(guessedTitle, "UTF-8")
-                        val encodedUri = java.net.URLEncoder.encode(uri.toString(), "UTF-8")
-                        navController.navigate("import_confirm/$encodedTitle/$encodedUri")
+                    libraryDao = database.libraryDao(),
+                    genreRepository = genreRepository,
+                    onImportClick = { navController.navigate(PushedRoute.IMPORT_LINK) },
+                    onItemClick = { item -> navController.navigate("detail/${item.id}") },
+                )
+            }
+            composable(PushedRoute.IMPORT_LINK) {
+                fun goToImportConfirm(guessedTitle: String, uri: android.net.Uri) {
+                    val encodedTitle = java.net.URLEncoder.encode(guessedTitle, "UTF-8")
+                    val encodedUri = java.net.URLEncoder.encode(uri.toString(), "UTF-8")
+                    navController.navigate("import_confirm/$encodedTitle/$encodedUri") {
+                        popUpTo(PushedRoute.IMPORT_LINK) { inclusive = true }
+                    }
+                }
+                com.mofy.app.ui.link.LinkScreen(
+                    contentPadding = contentPadding,
+                    onSaveSingleFile = { uri ->
+                        goToImportConfirm(com.mofy.app.data.library.guessTitleFromUri(context, uri), uri)
+                    },
+                    onSaveFolderLink = { movie, _, _ ->
+                        // Subtitles picked during import aren't carried
+                        // through to the TMDB-confirm step yet - link the
+                        // movie file now, add subtitles via Detail's Link
+                        // screen afterward if needed.
+                        goToImportConfirm(com.mofy.app.data.library.guessTitleFromUri(context, movie), movie)
                     },
                 )
             }
@@ -397,6 +426,7 @@ private fun MofyApp() {
                             item.title,
                             item.mediaType?.let { com.mofy.app.data.tmdb.MediaType.valueOf(it) }
                                 ?: com.mofy.app.data.tmdb.MediaType.MOVIE,
+                            alternateTitle = item.romanizedOriginalTitle,
                         )
                         navController.navigate(TopLevelDestination.BROWSE.route) {
                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -409,8 +439,13 @@ private fun MofyApp() {
             }
             composable(PushedRoute.LINK) { backStack ->
                 val linkItemId = backStack.arguments?.getString("itemId") ?: ""
+                val existingLinks by database.libraryDao().observeLinks(linkItemId).collectAsState(initial = emptyList())
                 com.mofy.app.ui.link.LinkScreen(
                     contentPadding = contentPadding,
+                    existingLinks = existingLinks,
+                    onSetActive = { linkId ->
+                        coroutineScope.launch { database.libraryDao().setActiveLink(linkItemId, linkId) }
+                    },
                     onSaveSingleFile = { uri ->
                         coroutineScope.launch {
                             database.libraryDao().addAndActivateLink(

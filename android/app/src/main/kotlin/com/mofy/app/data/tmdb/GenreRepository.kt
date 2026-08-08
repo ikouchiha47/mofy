@@ -15,6 +15,9 @@ class GenreRepository(
         if (dao.count() == 0) sync()
     }
 
+    /** id -> name for all cached genres - used to build genre filter chips (see Library). */
+    suspend fun getAllAsMap(): Map<Int, String> = dao.getAll().associate { it.id to it.name }
+
     /**
      * Resolve TMDB genre ids to names. If any id isn't found in the local
      * cache, re-syncs from TMDB once (covers newly added genres) before

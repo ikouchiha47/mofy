@@ -17,7 +17,7 @@ import com.mofy.app.data.tmdb.GenreEntity
         GenreEntity::class,
         TorrentSiteEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- SAF pickers don't strictly require these, but some OEM file pickers
+         and external player apps behave inconsistently without the app
+         also holding read access - requested at runtime before Import/Link
+         open a picker, see LibraryScreen/LinkScreen. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
         android:name=".MofyApplication"

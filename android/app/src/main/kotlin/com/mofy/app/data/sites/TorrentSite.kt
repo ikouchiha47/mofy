@@ -30,7 +30,11 @@ data class TorrentSite(
 ) {
     fun searchUrl(query: String): String? {
         val path = searchConfig?.searchPath ?: return null
-        val encoded = URLEncoder.encode(query, "UTF-8")
+        // URLEncoder implements application/x-www-form-urlencoded (space ->
+        // "+"), not path-segment percent-encoding (space -> "%20") - sites
+        // that treat the search term as a URL path segment (YTS) break on
+        // "+", so it's swapped for "%20" after encoding everything else.
+        val encoded = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
         val resolved = path.replace("{query}", encoded)
         return if (resolved.startsWith("http")) resolved else baseUrl.trimEnd('/') + "/" + resolved.trimStart('/')
     }

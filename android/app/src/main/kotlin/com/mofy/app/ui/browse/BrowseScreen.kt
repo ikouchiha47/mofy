@@ -51,6 +51,7 @@ fun BrowseScreen(
     val allSites by (siteRepository?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
     val category by sessionViewModel.selectedCategory.collectAsState()
     val searchContext by sessionViewModel.searchContext.collectAsState()
+    val selectedSearchTerm by sessionViewModel.selectedSearchTerm.collectAsState()
     // A search context (from a detail page's "search for torrent") pins the
     // category to what that item actually is - no point letting it drift.
     val currentCategory = searchContext?.mediaType ?: category ?: MediaType.MOVIE
@@ -67,7 +68,12 @@ fun BrowseScreen(
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
         searchContext?.let { context ->
-            SearchContextBanner(title = context.title, onClear = { sessionViewModel.clearSearchContext() })
+            SearchContextBanner(
+                context = context,
+                selectedTerm = selectedSearchTerm ?: context.title,
+                onSelectTerm = { sessionViewModel.selectSearchTerm(it) },
+                onClear = { sessionViewModel.clearSearchContext() },
+            )
         }
 
         CategorySegmentedControl(
@@ -85,7 +91,8 @@ fun BrowseScreen(
                         // would restore() the *previous* site's saved WebView
                         // history/state into the new site's WebView instance.
                         sessionViewModel.selectSite(site)
-                        val loadUrl = searchContext?.let { site.searchUrl(it.title) }
+                        val term = selectedSearchTerm ?: searchContext?.title
+                        val loadUrl = term?.let { site.searchUrl(it) }
                         sessionViewModel.consumeSearchContext(loadUrl)
                         onSitePicked(site)
                     },
@@ -105,24 +112,60 @@ fun BrowseScreen(
 }
 
 @Composable
-private fun SearchContextBanner(title: String, onClear: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+private fun SearchContextBanner(
+    context: BrowseSessionViewModel.SearchContext,
+    selectedTerm: String,
+    onSelectTerm: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-            .padding(start = 12.dp),
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Searching for:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onClear) {
+                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+            }
+        }
+        if (context.alternateTitle != null) {
+            // Neither title nor alternateTitle is reliably what a torrent
+            // site indexes a foreign-language release under - let the user
+            // pick rather than silently guessing one, see ADR discussion.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                SearchTermChip(label = context.title, selected = selectedTerm == context.title, onClick = { onSelectTerm(context.title) })
+                SearchTermChip(label = context.alternateTitle, selected = selectedTerm == context.alternateTitle, onClick = { onSelectTerm(context.alternateTitle) })
+            }
+        } else {
+            Text(context.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+@Composable
+private fun SearchTermChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                RoundedCornerShape(8.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         Text(
-            "Searching for: $title",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.weight(1f),
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        IconButton(onClick = onClear) {
-            Icon(Icons.Filled.Close, contentDescription = "Clear search")
-        }
     }
 }
 

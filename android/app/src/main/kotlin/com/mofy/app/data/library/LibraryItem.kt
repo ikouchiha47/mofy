@@ -27,6 +27,13 @@ data class LibraryItem(
     val tmdbId: Int?,
     val mediaType: String?,
     val title: String,
+    // Native-script title and its on-device romanization (see Romanizer.kt)
+    // - carried through from MediaResult so Detail's "Search" can offer
+    // both as candidate search terms, not just `title`. Neither is
+    // guaranteed to match what a release group's filename used, so the
+    // user picks - see ConfirmMatchScreen/BrowseScreen search-term chips.
+    val originalTitle: String?,
+    val romanizedOriginalTitle: String?,
     val overview: String,
     val posterPath: String?,
     val localPosterUri: String?,
@@ -60,6 +67,8 @@ fun MediaResult.toLibraryItem(source: LibrarySource): LibraryItem = LibraryItem(
     tmdbId = id,
     mediaType = mediaType.name,
     title = title,
+    originalTitle = originalTitle,
+    romanizedOriginalTitle = romanizedOriginalTitle,
     overview = overview,
     posterPath = posterPath,
     localPosterUri = null,

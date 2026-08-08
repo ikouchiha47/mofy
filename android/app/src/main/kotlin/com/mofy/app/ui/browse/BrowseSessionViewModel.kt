@@ -31,10 +31,20 @@ class BrowseSessionViewModel : ViewModel() {
     // Set when "search for torrent" is tapped from a library item's detail
     // page - Browse shows a "Searching for: X" banner while this is set,
     // and it's cleared the instant a site is picked (its one job is done,
-    // so Browse reads as normal the next time you land on it).
-    data class SearchContext(val title: String, val mediaType: MediaType)
+    // so Browse reads as normal the next time you land on it). alternateTitle
+    // is the on-device romanization of a non-Latin original_title, when one
+    // exists - neither it nor `title` is reliably what a release group's
+    // filename actually used, so the user picks via chips (see BrowseScreen).
+    data class SearchContext(val title: String, val mediaType: MediaType, val alternateTitle: String? = null)
     private val _searchContext = MutableStateFlow<SearchContext?>(null)
     val searchContext: StateFlow<SearchContext?> = _searchContext.asStateFlow()
+
+    private val _selectedSearchTerm = MutableStateFlow<String?>(null)
+    val selectedSearchTerm: StateFlow<String?> = _selectedSearchTerm.asStateFlow()
+
+    fun selectSearchTerm(term: String) {
+        _selectedSearchTerm.value = term
+    }
 
     // Set by Browse right before navigating into the WebView, when the site
     // was picked to fulfill a search context - the constructed search URL to
@@ -51,17 +61,20 @@ class BrowseSessionViewModel : ViewModel() {
         _selectedCategory.value = category
     }
 
-    fun startSearch(title: String, mediaType: MediaType) {
-        _searchContext.value = SearchContext(title, mediaType)
+    fun startSearch(title: String, mediaType: MediaType, alternateTitle: String? = null) {
+        _searchContext.value = SearchContext(title, mediaType, alternateTitle)
+        _selectedSearchTerm.value = title
     }
 
     fun clearSearchContext() {
         _searchContext.value = null
+        _selectedSearchTerm.value = null
     }
 
     fun consumeSearchContext(loadUrl: String?) {
         _pendingLoadUrl.value = loadUrl
         _searchContext.value = null
+        _selectedSearchTerm.value = null
     }
 
     fun consumePendingLoadUrl(): String? {

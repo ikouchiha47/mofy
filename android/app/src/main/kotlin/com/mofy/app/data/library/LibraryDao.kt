@@ -12,13 +12,31 @@ import kotlinx.coroutines.flow.Flow
 interface LibraryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(item: LibraryItem)
+    suspend fun insertRaw(item: LibraryItem)
 
     @Update
-    suspend fun update(item: LibraryItem)
+    suspend fun updateRaw(item: LibraryItem)
+
+    /** Insert/replace plus keeping the FTS5 search index in sync - see LibrarySearchEntity. */
+    @Transaction
+    suspend fun upsert(item: LibraryItem) {
+        insertRaw(item)
+        reindexSearch(item)
+    }
+
+    /** Update plus keeping the FTS5 search index in sync. */
+    @Transaction
+    suspend fun update(item: LibraryItem) {
+        updateRaw(item)
+        reindexSearch(item)
+    }
 
     @Query("SELECT * FROM library_items ORDER BY addedAtEpochMillis DESC")
     fun observeAll(): Flow<List<LibraryItem>>
+
+    /** One-shot fetch (not a Flow) - used to backfill the search index for items saved before it existed. */
+    @Query("SELECT * FROM library_items")
+    suspend fun getAllOnce(): List<LibraryItem>
 
     @Query("SELECT * FROM library_items WHERE id = :id")
     suspend fun getById(id: String): LibraryItem?
@@ -52,6 +70,7 @@ interface LibraryDao {
     suspend fun deleteLibraryItem(id: String) {
         deleteDownloadsFor(id)
         deleteLinksFor(id)
+        deleteSearchIndex(id)
         deleteItem(id)
     }
 
@@ -100,5 +119,54 @@ interface LibraryDao {
     suspend fun addAndActivateLink(link: LibraryLink) {
         val linkId = insertLink(link)
         setActiveLink(link.libraryItemKey, linkId)
+    }
+
+    // --- FTS5 search index (see LibrarySearchEntity, ADR 0002) ---
+
+    @Insert
+    suspend fun insertSearchEntry(entry: LibrarySearchEntity)
+
+    @Query("DELETE FROM library_search WHERE itemId = :itemId")
+    suspend fun deleteSearchIndex(itemId: String)
+
+    @Transaction
+    suspend fun reindexSearch(item: LibraryItem) {
+        deleteSearchIndex(item.id)
+        insertSearchEntry(
+            LibrarySearchEntity(
+                itemId = item.id,
+                title = item.title,
+                overview = item.overview,
+                originalTitle = item.originalTitle.orEmpty(),
+                romanizedOriginalTitle = item.romanizedOriginalTitle.orEmpty(),
+            ),
+        )
+        SpellfixIndex.indexWords(
+            tokenize(item.title) +
+                tokenize(item.overview) +
+                tokenize(item.originalTitle.orEmpty()) +
+                tokenize(item.romanizedOriginalTitle.orEmpty()),
+        )
+    }
+
+    @Query("SELECT itemId FROM library_search WHERE library_search MATCH :matchQuery")
+    suspend fun searchItemIds(matchQuery: String): List<String>
+
+    /**
+     * FTS prefix search first (cheap, exact/prefix matches); if a token
+     * gets no hits at all, spellfix1 suggests the closest indexed word
+     * (e.g. "hui" -> "huo") and the query is retried with corrections
+     * substituted in - see SpellfixIndex.
+     */
+    suspend fun searchLibrary(rawQuery: String): List<String> {
+        val tokens = tokenize(rawQuery)
+        if (tokens.isEmpty()) return emptyList()
+
+        val direct = searchItemIds(matchQueryFromTokens(tokens) ?: return emptyList())
+        if (direct.isNotEmpty()) return direct
+
+        val corrected = tokens.map { token -> SpellfixIndex.suggest(token).firstOrNull() ?: token }
+        if (corrected == tokens) return emptyList()
+        return searchItemIds(matchQueryFromTokens(corrected) ?: return emptyList())
     }
 }

@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mofy — Library Filters</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0E0E10;
+    --surface: #1A1A1D;
+    --surface-variant: #232327;
+    --surface-container: #2B2B30;
+    --border: #2E2E33;
+    --text: #F2F2F2;
+    --text-dim: #9A9AA2;
+    --accent: #E94560;
+    --accent-blue: #4EA1FF;
+    --good: #3ECF8E;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: #050506;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body {
+    padding: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    align-items: flex-start;
+  }
+  .label {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0 0 10px 2px;
+    letter-spacing: 0.02em;
+  }
+  .frame {
+    width: 360px;
+    background: var(--bg);
+    border-radius: 28px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+  }
+  .statusbar { height: 34px; }
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 16px 12px;
+  }
+  .topbar-title { font-size: 15px; font-weight: 600; }
+  .content { padding: 0 16px 24px; }
+
+  .import-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--accent-blue);
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+
+  /* Segmented control (Type) */
+  .segmented {
+    display: flex;
+    background: var(--surface-variant);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .segment {
+    flex: 1;
+    text-align: center;
+    padding: 7px 0;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .segment.selected { background: var(--accent); color: white; font-weight: 600; }
+
+  /* Chip rows */
+  .chip-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .chip {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: var(--surface-variant);
+    color: var(--text-dim);
+    font-size: 12.5px;
+  }
+  .chip.selected { background: var(--accent); color: white; }
+
+  .section-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 14px 0 6px 2px;
+  }
+
+  /* Filter button + sheet */
+  .filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 12.5px;
+  }
+  .filter-count {
+    background: var(--accent);
+    color: white;
+    font-size: 10px;
+    border-radius: 999px;
+    padding: 1px 6px;
+    margin-left: 4px;
+  }
+  .active-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .active-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px 5px 10px;
+    border-radius: 7px;
+    background: var(--surface-variant);
+    font-size: 11.5px;
+    color: var(--text);
+  }
+  .active-chip .x { color: var(--text-dim); font-size: 12px; }
+
+  .sheet {
+    background: var(--surface);
+    border-radius: 16px 16px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 16px;
+    margin-top: 20px;
+  }
+  .sheet-handle {
+    width: 36px; height: 4px; border-radius: 4px;
+    background: var(--border);
+    margin: 0 auto 14px;
+  }
+  .sheet-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .sheet-btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .sheet-btn.primary { background: var(--accent); color: white; }
+  .sheet-btn.outline { border: 1px solid var(--border); color: var(--text); }
+
+  /* Library row */
+  .lib-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+  }
+  .poster-thumb {
+    width: 46px; height: 66px;
+    border-radius: 8px;
+    background: linear-gradient(160deg, #3a2230, #1c1420 60%);
+    flex-shrink: 0;
+  }
+  .lib-title-row { display: flex; align-items: center; gap: 8px; }
+  .lib-title { font-size: 13.5px; }
+  .type-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: var(--surface-variant);
+    color: var(--text-dim);
+  }
+  .lib-date { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+  <!-- Option A: Segmented control (Type) + separate genre chip row -->
+  <div>
+    <p class="label">A · Segmented control (Type) + genre row below</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar"><div class="topbar-title">Library</div></div>
+      <div class="content">
+        <button class="import-btn">+ Import from device</button>
+
+        <div class="segmented">
+          <div class="segment selected">All</div>
+          <div class="segment">Movies</div>
+          <div class="segment">TV</div>
+        </div>
+
+        <div class="chip-row" style="margin-top: 10px;">
+          <div class="chip selected">Action</div>
+          <div class="chip">Thriller</div>
+          <div class="chip">Comedy</div>
+          <div class="chip">Drama</div>
+        </div>
+
+        <div class="lib-row" style="margin-top: 14px;">
+          <div class="poster-thumb"></div>
+          <div>
+            <div class="lib-title-row"><span class="lib-title">The Furious</span><span class="type-tag">Movie</span></div>
+            <div class="lib-date">Date Added: Aug 8, 2026</div>
+          </div>
+        </div>
+        <div class="lib-row">
+          <div class="poster-thumb"></div>
+          <div>
+            <div class="lib-title-row"><span class="lib-title">Jack Reacher</span><span class="type-tag">Movie</span></div>
+            <div class="lib-date">Date Added: Aug 6, 2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option B: Labeled rows -->
+  <div>
+    <p class="label">B · Explicit "Type" / "Genre" labels, two rows</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar"><div class="topbar-title">Library</div></div>
+      <div class="content">
+        <button class="import-btn">+ Import from device</button>
+
+        <div class="section-label" style="margin-top:0;">Type</div>
+        <div class="chip-row">
+          <div class="chip selected">All</div>
+          <div class="chip">Movies</div>
+          <div class="chip">TV</div>
+        </div>
+
+        <div class="section-label">Genre</div>
+        <div class="chip-row">
+          <div class="chip selected">Action</div>
+          <div class="chip">Thriller</div>
+          <div class="chip">Comedy</div>
+          <div class="chip">Drama</div>
+        </div>
+
+        <div class="lib-row" style="margin-top: 14px;">
+          <div class="poster-thumb"></div>
+          <div>
+            <div class="lib-title-row"><span class="lib-title">The Furious</span><span class="type-tag">Movie</span></div>
+            <div class="lib-date">Date Added: Aug 8, 2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option C: Filter button -> bottom sheet -->
+  <div>
+    <p class="label">C · "Filters" button opens a sheet (collapsed by default)</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar"><div class="topbar-title">Library</div></div>
+      <div class="content">
+        <button class="import-btn">+ Import from device</button>
+
+        <div class="filter-row">
+          <div class="filter-btn">&#9776; Filters<span class="filter-count">2</span></div>
+        </div>
+        <div class="active-filters">
+          <div class="active-chip">Movies <span class="x">&times;</span></div>
+          <div class="active-chip">Action <span class="x">&times;</span></div>
+        </div>
+
+        <div class="lib-row">
+          <div class="poster-thumb"></div>
+          <div>
+            <div class="lib-title-row"><span class="lib-title">The Furious</span><span class="type-tag">Movie</span></div>
+            <div class="lib-date">Date Added: Aug 8, 2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option C continued: the sheet itself -->
+  <div>
+    <p class="label">C · Tapping "Filters" opens this</p>
+    <div class="frame">
+      <div class="statusbar"></div>
+      <div class="topbar"><div class="topbar-title">Library</div></div>
+      <div class="content" style="opacity: 0.35;">
+        <button class="import-btn">+ Import from device</button>
+        <div class="filter-row">
+          <div class="filter-btn">&#9776; Filters</div>
+        </div>
+      </div>
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Filters</div>
+        <div class="section-label" style="margin-top:0;">Type</div>
+        <div class="chip-row">
+          <div class="chip selected">All</div>
+          <div class="chip">Movies</div>
+          <div class="chip">TV</div>
+        </div>
+        <div class="section-label">Genre</div>
+        <div class="chip-row" style="flex-wrap: wrap;">
+          <div class="chip selected">Action</div>
+          <div class="chip">Thriller</div>
+          <div class="chip">Comedy</div>
+          <div class="chip">Drama</div>
+          <div class="chip">Crime</div>
+        </div>
+        <div class="sheet-actions">
+          <div class="sheet-btn outline">Clear</div>
+          <div class="sheet-btn primary">Apply</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

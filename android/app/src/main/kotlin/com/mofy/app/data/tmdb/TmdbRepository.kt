@@ -21,6 +21,18 @@ class TmdbRepository(private val api: TmdbApi = TmdbClient.api) {
     suspend fun searchTv(query: String): TmdbResult<List<MediaResult>> =
         safeCall { api.searchTv(query).results.map { it.toMediaResult(MediaType.TV) } }
 
+    /** Powers Detail's required-field self-heal and manual "Sync info" - see ADR 0004. */
+    suspend fun getMovieDetail(tmdbId: Int): TmdbResult<MediaResult> =
+        safeCall { api.movieDetail(tmdbId).toMediaResult(MediaType.MOVIE) }
+
+    suspend fun getTvDetail(tmdbId: Int): TmdbResult<MediaResult> =
+        safeCall { api.tvDetail(tmdbId).toMediaResult(MediaType.TV) }
+
+    suspend fun getDetail(tmdbId: Int, mediaType: MediaType): TmdbResult<MediaResult> = when (mediaType) {
+        MediaType.MOVIE -> getMovieDetail(tmdbId)
+        MediaType.TV -> getTvDetail(tmdbId)
+    }
+
     private suspend fun <T> safeCall(block: suspend () -> T): TmdbResult<T> = try {
         TmdbResult.Success(block())
     } catch (e: IOException) {

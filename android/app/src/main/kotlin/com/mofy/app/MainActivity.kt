@@ -287,7 +287,31 @@ private fun MofyApp() {
                     catalogRepository = catalogRepository,
                     onAdd = { catalogItem ->
                         coroutineScope.launch {
-                            database.libraryDao().upsert(catalogItem.toLibraryItem())
+                            // Catalog items are IMDb-only (no poster) - try a TMDB
+                            // title search first so Add can pick up a real poster
+                            // (and tmdbId, upgrading it to sync-able going forward,
+                            // see DetailScreen's Sync info) instead of always
+                            // saving with a blank poster.
+                            val tmdbRepository = com.mofy.app.data.tmdb.TmdbRepository()
+                            val mediaType = if (catalogItem.titleType == "tvSeries") {
+                                com.mofy.app.data.tmdb.MediaType.TV
+                            } else {
+                                com.mofy.app.data.tmdb.MediaType.MOVIE
+                            }
+                            val searchResult = if (mediaType == com.mofy.app.data.tmdb.MediaType.TV) {
+                                tmdbRepository.searchTv(catalogItem.title)
+                            } else {
+                                tmdbRepository.searchMovies(catalogItem.title)
+                            }
+                            val match = (searchResult as? com.mofy.app.data.tmdb.TmdbResult.Success)?.data
+                                ?.let { results -> results.firstOrNull { it.year == catalogItem.startYear?.toString() } ?: results.firstOrNull() }
+
+                            val libraryItem = if (match != null) {
+                                match.toLibraryItem(LibrarySource.DISCOVERED)
+                            } else {
+                                catalogItem.toLibraryItem()
+                            }
+                            database.libraryDao().upsert(libraryItem)
                         }
                         android.widget.Toast.makeText(context, "Added \"${catalogItem.title}\" to library", android.widget.Toast.LENGTH_SHORT).show()
                     },

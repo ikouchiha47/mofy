@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Whatshot
@@ -36,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -47,8 +49,11 @@ import com.mofy.app.data.library.Feedback
 import com.mofy.app.data.library.LibraryDao
 import com.mofy.app.data.library.LibraryDownload
 import com.mofy.app.data.library.LibraryItem
+import com.mofy.app.data.library.PosterSource
 import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.MediaType
+import com.mofy.app.data.tmdb.TmdbRepository
+import com.mofy.app.data.tmdb.TmdbResult
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
@@ -79,6 +84,45 @@ fun DetailScreen(
         }
     }
 
+    // Required-field self-heal + manual "Sync info" - see ADR 0004. Required:
+    // title (always present, never missing), poster, year, overview. Only
+    // meaningful for TMDB-matched items (tmdbId != null) - manual/Discover
+    // entries have nothing to sync against.
+    val tmdbRepository = remember { TmdbRepository() }
+    var syncing by remember(current.id) { mutableStateOf(false) }
+    fun hasRequiredFieldsMissing(item: LibraryItem) =
+        (item.posterPath.isNullOrBlank() && item.localPosterUri.isNullOrBlank()) ||
+            item.year.isNullOrBlank() ||
+            item.overview.isBlank()
+
+    suspend fun syncFromTmdb(force: Boolean) {
+        val tmdbId = current.tmdbId ?: return
+        val mediaType = current.mediaType?.let { MediaType.valueOf(it) } ?: return
+        syncing = true
+        when (val result = tmdbRepository.getDetail(tmdbId, mediaType)) {
+            is TmdbResult.Success -> {
+                val fetched = result.data
+                libraryDao.update(
+                    current.copy(
+                        posterPath = if (force) fetched.posterPath ?: current.posterPath else current.posterPath ?: fetched.posterPath,
+                        posterSource = if (fetched.posterPath != null) PosterSource.TMDB.name else current.posterSource,
+                        year = if (force) fetched.year ?: current.year else current.year ?: fetched.year,
+                        overview = if (force || current.overview.isBlank()) fetched.overview.takeIf { it.isNotBlank() } ?: current.overview else current.overview,
+                        detailSyncedAtEpochMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            is TmdbResult.Failure -> Unit // silent for the auto-heal path; manual button shows its own toast below
+        }
+        syncing = false
+    }
+
+    LaunchedEffect(current.id) {
+        if (current.tmdbId != null && hasRequiredFieldsMissing(current)) {
+            syncFromTmdb(force = false)
+        }
+    }
+
     LazyColumn(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -92,6 +136,27 @@ fun DetailScreen(
                             .aspectRatio(2f / 3f)
                             .clip(RoundedCornerShape(16.dp)),
                     )
+                    Spacer(modifier = Modifier.width(16.dp))
+                } else {
+                    // Missing poster - a placeholder with a sync icon, not just
+                    // blank space, since a TMDB-matched item can self-heal this
+                    // (see the LaunchedEffect above) - the icon signals "this is
+                    // being/can be filled in", not "this item has no poster".
+                    Box(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Sync,
+                            contentDescription = "Poster not synced yet",
+                            tint = Color(0xFF4EA1FF),
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
                     Spacer(modifier = Modifier.width(16.dp))
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -121,26 +186,42 @@ fun DetailScreen(
                     }
                     // Always editable, not just shown when missing - Browse-
                     // derived types can be wrong too, see ADR 0004.
-                    Row(modifier = Modifier.padding(top = 8.dp)) {
-                        MediaTypeChip(
-                            label = "Movie",
-                            selected = current.mediaType == MediaType.MOVIE.name,
-                            onClick = {
-                                coroutineScope.launch {
-                                    libraryDao.update(current.copy(mediaType = MediaType.MOVIE.name))
-                                }
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        MediaTypeChip(
-                            label = "TV",
-                            selected = current.mediaType == MediaType.TV.name,
-                            onClick = {
-                                coroutineScope.launch {
-                                    libraryDao.update(current.copy(mediaType = MediaType.TV.name))
-                                }
-                            },
-                        )
+                    Row(
+                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                    ) {
+                        Row {
+                            MediaTypeChip(
+                                label = "Movie",
+                                selected = current.mediaType == MediaType.MOVIE.name,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        libraryDao.update(current.copy(mediaType = MediaType.MOVIE.name))
+                                    }
+                                },
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            MediaTypeChip(
+                                label = "TV",
+                                selected = current.mediaType == MediaType.TV.name,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        libraryDao.update(current.copy(mediaType = MediaType.TV.name))
+                                    }
+                                },
+                            )
+                        }
+                        if (current.tmdbId != null) {
+                            SyncInfoButton(
+                                syncing = syncing,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        syncFromTmdb(force = true)
+                                        android.widget.Toast.makeText(context, "Synced from TMDB", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -273,6 +354,24 @@ private fun FeedbackIconButton(icon: androidx.compose.ui.graphics.vector.ImageVe
             tint = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp).align(androidx.compose.ui.Alignment.Center),
         )
+    }
+}
+
+/** ADR 0004 style: accentBlue label on accentBlue@12% bg, accentBlue@30% border. */
+@Composable
+private fun SyncInfoButton(syncing: Boolean, onClick: () -> Unit) {
+    val accentBlue = Color(0xFF4EA1FF)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(accentBlue.copy(alpha = 0.12f))
+            .clickable(enabled = !syncing, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Icon(Icons.Filled.Sync, contentDescription = null, tint = accentBlue, modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(if (syncing) "Syncing…" else "Sync info", style = MaterialTheme.typography.labelSmall, color = accentBlue)
     }
 }
 

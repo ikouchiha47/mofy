@@ -96,6 +96,12 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
 
+    // Cursor-based pagination for Discover's catalog browsing - bounded
+    // in-memory window (old pages drop as you scroll away) and LazyColumn
+    // integration, rather than hand-rolling scroll-position tracking.
+    implementation("androidx.paging:paging-runtime-ktx:3.3.6")
+    implementation("androidx.paging:paging-compose:3.3.6")
+
     implementation("androidx.room:room-runtime:2.8.1")
     implementation("androidx.room:room-ktx:2.8.1")
     ksp("androidx.room:room-compiler:2.8.1")

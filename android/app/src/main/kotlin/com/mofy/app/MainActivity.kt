@@ -31,6 +31,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mofy.app.data.catalog.toLibraryItem
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.library.LibraryDownload
 import com.mofy.app.data.library.LibrarySource
@@ -90,6 +91,15 @@ private fun MofyApp() {
     val database = remember { AppDatabase.get(context) }
     val genreRepository = remember { com.mofy.app.data.tmdb.GenreRepository(dao = database.genreDao()) }
     val siteRepository = remember { SiteRepository(dao = database.siteDao()) }
+    // CatalogDatabase.get() copies a 39MB asset out on first run - real file
+    // I/O, so it can't run inline on the composition/main thread.
+    var catalogRepository by remember { androidx.compose.runtime.mutableStateOf<com.mofy.app.data.catalog.CatalogRepository?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val db = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.mofy.app.data.catalog.CatalogDatabase.get(context)
+        }
+        catalogRepository = com.mofy.app.data.catalog.CatalogRepository(db)
+    }
     val coroutineScope = rememberCoroutineScope()
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -179,6 +189,14 @@ private fun MofyApp() {
                         }
                     },
                 )
+                PushedRoute.DISCOVER -> TopAppBar(
+                    title = { Text("Discover") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
                 ROUTE_DETAIL -> TopAppBar(
@@ -259,6 +277,19 @@ private fun MofyApp() {
                     onEditSite = { site: TorrentSite? ->
                         val route = site?.let { PushedRoute.editSite(it.name) } ?: PushedRoute.EDIT_SITE_NEW
                         navController.navigate(route)
+                    },
+                    onDiscoverClick = { navController.navigate(PushedRoute.DISCOVER) },
+                )
+            }
+            composable(PushedRoute.DISCOVER) {
+                com.mofy.app.ui.discover.DiscoverScreen(
+                    contentPadding = contentPadding,
+                    catalogRepository = catalogRepository,
+                    onAdd = { catalogItem ->
+                        coroutineScope.launch {
+                            database.libraryDao().upsert(catalogItem.toLibraryItem())
+                        }
+                        android.widget.Toast.makeText(context, "Added \"${catalogItem.title}\" to library", android.widget.Toast.LENGTH_SHORT).show()
                     },
                 )
             }

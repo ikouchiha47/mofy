@@ -7,7 +7,7 @@ import com.mofy.app.data.tmdb.MediaResult
 import com.mofy.app.data.tmdb.TMDB_IMAGE_BASE_URL
 import java.util.UUID
 
-enum class LibrarySource { SAVED, DOWNLOADED, IMPORTED, MANUAL }
+enum class LibrarySource { SAVED, DOWNLOADED, IMPORTED, MANUAL, DISCOVERED }
 enum class PosterSource { TMDB, UPLOADED, NONE }
 
 /**

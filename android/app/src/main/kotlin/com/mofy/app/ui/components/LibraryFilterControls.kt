@@ -97,18 +97,21 @@ fun FilterButton(count: Int, onClick: () -> Unit) {
     }
 }
 
+/** onRemove null renders as a plain non-removable indicator chip (e.g. Discover's current-sort display). */
 @Composable
-fun ActiveFilterChip(label: String, onRemove: () -> Unit) {
+fun ActiveFilterChip(label: String, onRemove: (() -> Unit)?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = 10.dp, end = if (onRemove != null) 4.dp else 10.dp, top = 4.dp, bottom = 4.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium)
-        IconButton(onClick = onRemove, modifier = Modifier.size(22.dp).padding(start = 2.dp)) {
-            Icon(Icons.Filled.Close, contentDescription = "Remove filter", modifier = Modifier.size(14.dp))
+        if (onRemove != null) {
+            IconButton(onClick = onRemove, modifier = Modifier.size(22.dp).padding(start = 2.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "Remove filter", modifier = Modifier.size(14.dp))
+            }
         }
     }
 }

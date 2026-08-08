@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -47,6 +48,7 @@ fun BrowseScreen(
     siteRepository: SiteRepository? = null,
     onSitePicked: (TorrentSite) -> Unit,
     onEditSite: (TorrentSite?) -> Unit,
+    onDiscoverClick: () -> Unit = {},
 ) {
     val allSites by (siteRepository?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
     val category by sessionViewModel.selectedCategory.collectAsState()
@@ -83,6 +85,15 @@ fun BrowseScreen(
 
         val sites = allSites.filter { it.category == currentCategory }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+                ListItem(
+                    headlineContent = { Text("Discover") },
+                    supportingContent = { Text("Browse the bundled IMDb catalog") },
+                    leadingContent = { Icon(Icons.Filled.Explore, contentDescription = null) },
+                    trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
+                    modifier = Modifier.clickable(onClick = onDiscoverClick),
+                )
+            }
             items(sites) { site ->
                 SiteRow(
                     site = site,

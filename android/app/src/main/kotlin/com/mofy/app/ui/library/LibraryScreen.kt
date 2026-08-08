@@ -3,7 +3,6 @@ package com.mofy.app.ui.library
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,17 +17,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,8 +42,9 @@ import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.ui.components.ActiveFilterChip
 import com.mofy.app.ui.components.FilterButton
-import com.mofy.app.ui.components.FilterChip
+import com.mofy.app.ui.components.FilterSidePanel
 import com.mofy.app.ui.components.LibraryListRow
+import com.mofy.app.ui.components.SelectableListRow
 import com.mofy.app.ui.components.TypeSegmentedControl
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
@@ -68,7 +64,7 @@ import kotlinx.coroutines.launch
  * any future filter dimension) lives behind a "Filters" sheet instead of a
  * second permanent row, since that's the one that'll actually grow.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     contentPadding: PaddingValues,
@@ -111,129 +107,100 @@ fun LibraryScreen(
     }
     val activeFilterCount = listOfNotNull(selectedGenreId).size
 
-    Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search title or overview") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = if (searchQuery.isNotEmpty()) {
-                { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
-            } else {
-                null
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-            OutlinedButton(
-                onClick = onImportClick,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Import from device", modifier = Modifier.padding(start = 8.dp))
-            }
-            OutlinedButton(
-                onClick = onAddManuallyClick,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Add manually")
-            }
-        }
-
-        if (items.isNotEmpty()) {
-            TypeSegmentedControl(
-                selected = selectedType,
-                onSelect = { selectedType = it },
-                modifier = Modifier.padding(horizontal = 16.dp),
+    Box(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search title or overview") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = if (searchQuery.isNotEmpty()) {
+                    { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
+                } else {
+                    null
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            ) {
-                FilterButton(count = activeFilterCount, onClick = { filterSheetOpen = true })
-                if (selectedGenreId != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    ActiveFilterChip(
-                        label = genreNames[selectedGenreId] ?: "",
-                        onRemove = { selectedGenreId = null },
-                    )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                OutlinedButton(
+                    onClick = onImportClick,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Import from device", modifier = Modifier.padding(start = 8.dp))
+                }
+                OutlinedButton(
+                    onClick = onAddManuallyClick,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Add manually")
                 }
             }
-        }
 
-        if (items.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "Nothing in your library yet — head to Browse to find something.",
-                    textAlign = TextAlign.Center,
+            if (items.isNotEmpty()) {
+                TypeSegmentedControl(
+                    selected = selectedType,
+                    onSelect = { selectedType = it },
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    FilterButton(count = activeFilterCount, onClick = { filterSheetOpen = true })
+                    if (selectedGenreId != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ActiveFilterChip(
+                            label = genreNames[selectedGenreId] ?: "",
+                            onRemove = { selectedGenreId = null },
+                        )
+                    }
+                }
             }
-        } else if (filtered.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text("Nothing matches this filter.", textAlign = TextAlign.Center)
-            }
-        } else {
-            LazyColumn {
-                items(filtered, key = { it.id }) { item ->
-                    LibraryListRow(
-                        item,
-                        onClick = { onItemClick(item) },
-                        onDelete = { coroutineScope.launch { libraryDao?.deleteLibraryItem(item.id) } },
+
+            if (items.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Nothing in your library yet — head to Browse to find something.",
+                        textAlign = TextAlign.Center,
                     )
+                }
+            } else if (filtered.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Text("Nothing matches this filter.", textAlign = TextAlign.Center)
+                }
+            } else {
+                LazyColumn {
+                    items(filtered, key = { it.id }) { item ->
+                        LibraryListRow(
+                            item,
+                            onClick = { onItemClick(item) },
+                            onDelete = { coroutineScope.launch { libraryDao?.deleteLibraryItem(item.id) } },
+                        )
+                    }
                 }
             }
         }
-    }
 
-    if (filterSheetOpen) {
         var pendingGenreId by remember(selectedGenreId) { mutableStateOf(selectedGenreId) }
-        ModalBottomSheet(
-            onDismissRequest = { filterSheetOpen = false },
-            sheetState = rememberModalBottomSheetState(),
+        FilterSidePanel(
+            visible = filterSheetOpen,
+            onDismiss = { filterSheetOpen = false },
+            onClear = { pendingGenreId = null; selectedGenreId = null; filterSheetOpen = false },
+            onApply = { selectedGenreId = pendingGenreId; filterSheetOpen = false },
         ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text("Filters", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 14.dp))
-
-                if (availableGenreIds.isNotEmpty()) {
-                    Text(
-                        "Genre",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
+            LazyColumn {
+                items(availableGenreIds) { genreId ->
+                    SelectableListRow(
+                        label = genreNames[genreId] ?: "",
+                        selected = pendingGenreId == genreId,
+                        onClick = { pendingGenreId = if (pendingGenreId == genreId) null else genreId },
                     )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        availableGenreIds.forEach { genreId ->
-                            FilterChip(
-                                label = genreNames[genreId] ?: return@forEach,
-                                selected = pendingGenreId == genreId,
-                                onClick = { pendingGenreId = if (pendingGenreId == genreId) null else genreId },
-                            )
-                        }
-                    }
-                } else {
-                    Text(
-                        "No genres to filter by yet.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 12.dp)) {
-                    OutlinedButton(
-                        onClick = { pendingGenreId = null; selectedGenreId = null; filterSheetOpen = false },
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("Clear") }
-                    Button(
-                        onClick = { selectedGenreId = pendingGenreId; filterSheetOpen = false },
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("Apply") }
                 }
             }
         }

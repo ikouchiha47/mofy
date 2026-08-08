@@ -21,6 +21,8 @@ object PushedRoute {
     const val EDIT_SITE_NEW = "edit_site_new"
     const val LINK = "link/{itemId}"
     const val IMPORT_LINK = "import_link"
+    const val ADD_MANUALLY = "add_manually"
+    const val MANUAL_ENTRY_FORM = "manual_entry_form"
 
     fun editSite(siteName: String) = "edit_site/$siteName"
     fun link(itemId: String) = "link/$itemId"

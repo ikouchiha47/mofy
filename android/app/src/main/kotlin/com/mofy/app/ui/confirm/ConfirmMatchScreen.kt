@@ -67,6 +67,9 @@ fun ConfirmMatchScreen(
     // needed. Import sets this: a picked file can only unambiguously link
     // to one saved item, so multi-select there just creates ambiguity.
     allowMultiSelect: Boolean = true,
+    // Only Library's "Add manually" flow sets this - the escape hatch for
+    // titles TMDB doesn't have at all, see ADR 0004.
+    onManualEntry: (() -> Unit)? = null,
     viewModel: ConfirmMatchViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -152,6 +155,17 @@ fun ConfirmMatchScreen(
                     }
                 }
             }
+        }
+
+        if (onManualEntry != null && !autoSearch) {
+            Text(
+                "Can't find it? Enter details manually →",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                    .padding(bottom = 8.dp)
+                    .clickable(onClick = onManualEntry),
+            )
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {

@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.mofy.app.data.library.Feedback
 import com.mofy.app.data.library.LibraryDao
 import com.mofy.app.data.library.LibraryDownload
 import com.mofy.app.data.library.LibraryItem
@@ -147,11 +148,35 @@ fun DetailScreen(
 
             val isLinked = activeLink != null
             Row(modifier = Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
-                FeedbackIconButton(Icons.Filled.ThumbUp, "Like", context)
+                FeedbackIconButton(
+                    icon = Icons.Filled.ThumbUp,
+                    label = "Like",
+                    active = current.feedback == Feedback.LIKE,
+                    onClick = {
+                        val next = if (current.feedback == Feedback.LIKE) null else Feedback.LIKE
+                        coroutineScope.launch { libraryDao.update(current.copy(feedback = next)) }
+                    },
+                )
                 Spacer(modifier = Modifier.width(28.dp))
-                FeedbackIconButton(Icons.Filled.Whatshot, "Super Like", context)
+                FeedbackIconButton(
+                    icon = Icons.Filled.Whatshot,
+                    label = "Super Like",
+                    active = current.feedback == Feedback.SUPER_LIKE,
+                    onClick = {
+                        val next = if (current.feedback == Feedback.SUPER_LIKE) null else Feedback.SUPER_LIKE
+                        coroutineScope.launch { libraryDao.update(current.copy(feedback = next)) }
+                    },
+                )
                 Spacer(modifier = Modifier.width(28.dp))
-                FeedbackIconButton(Icons.Filled.ThumbDown, "Not Interested", context)
+                FeedbackIconButton(
+                    icon = Icons.Filled.ThumbDown,
+                    label = "Not Interested",
+                    active = current.feedback == Feedback.NOT_INTERESTED,
+                    onClick = {
+                        val next = if (current.feedback == Feedback.NOT_INTERESTED) null else Feedback.NOT_INTERESTED
+                        coroutineScope.launch { libraryDao.update(current.copy(feedback = next)) }
+                    },
+                )
             }
             Button(
                 onClick = {
@@ -234,20 +259,18 @@ fun DetailScreen(
 }
 
 @Composable
-private fun FeedbackIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, context: android.content.Context) {
+private fun FeedbackIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(40.dp)
             .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable {
-                android.widget.Toast.makeText(context, "$label - not implemented yet", android.widget.Toast.LENGTH_SHORT).show()
-            },
+            .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick),
     ) {
         Icon(
             icon,
             contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp).align(androidx.compose.ui.Alignment.Center),
         )
     }

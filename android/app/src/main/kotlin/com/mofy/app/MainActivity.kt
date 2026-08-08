@@ -155,6 +155,22 @@ private fun MofyApp() {
                         }
                     },
                 )
+                PushedRoute.ADD_MANUALLY -> TopAppBar(
+                    title = { Text("Add manually") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+                PushedRoute.MANUAL_ENTRY_FORM -> TopAppBar(
+                    title = { Text("Add manually") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
                 ROUTE_DETAIL -> TopAppBar(
@@ -244,7 +260,47 @@ private fun MofyApp() {
                     libraryDao = database.libraryDao(),
                     genreRepository = genreRepository,
                     onImportClick = { navController.navigate(PushedRoute.IMPORT_LINK) },
+                    onAddManuallyClick = { navController.navigate(PushedRoute.ADD_MANUALLY) },
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
+                )
+            }
+            composable(PushedRoute.ADD_MANUALLY) {
+                var addManuallyType by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(com.mofy.app.data.tmdb.MediaType.MOVIE)
+                }
+                ConfirmMatchScreen(
+                    contentPadding = contentPadding,
+                    extractedTitle = "",
+                    mediaType = addManuallyType,
+                    onMediaTypeChange = { addManuallyType = it },
+                    showDownloadAction = false,
+                    autoSearch = false,
+                    allowMultiSelect = false,
+                    onManualEntry = {
+                        navController.navigate(PushedRoute.MANUAL_ENTRY_FORM) {
+                            popUpTo(PushedRoute.ADD_MANUALLY) { inclusive = true }
+                        }
+                    },
+                    onConfirm = {},
+                    onSaveToLibrary = { results ->
+                        coroutineScope.launch {
+                            results.forEach { database.libraryDao().saveConfirmedMatch(it.toLibraryItem(LibrarySource.MANUAL)) }
+                        }
+                        android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
+                        navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
+                    },
+                )
+            }
+            composable(PushedRoute.MANUAL_ENTRY_FORM) {
+                com.mofy.app.ui.library.ManualEntryScreen(
+                    contentPadding = contentPadding,
+                    onSave = { libraryItem ->
+                        coroutineScope.launch {
+                            database.libraryDao().upsert(libraryItem)
+                        }
+                        android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
+                        navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
+                    },
                 )
             }
             composable(PushedRoute.IMPORT_LINK) {

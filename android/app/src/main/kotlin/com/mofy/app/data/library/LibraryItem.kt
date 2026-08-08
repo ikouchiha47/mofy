@@ -11,6 +11,18 @@ enum class LibrarySource { SAVED, DOWNLOADED, IMPORTED, MANUAL }
 enum class PosterSource { TMDB, UPLOADED, NONE }
 
 /**
+ * Plain Int, not an enum - a future recommendation engine needs to sum/
+ * average/sort by this, and a nullable-String-enum column would mean
+ * mapping back to a number on every calculation. No TypeConverter needed
+ * either, since Room maps Int straight to SQLite's INTEGER type.
+ */
+object Feedback {
+    const val NOT_INTERESTED = -1
+    const val LIKE = 1
+    const val SUPER_LIKE = 2
+}
+
+/**
  * A saved library entry. `id` is a synthetic identity, deliberately not
  * derived from tmdbId/mediaType - both are nullable (manual, no-TMDB-match
  * entries have neither at first) and mediaType is user-correctable after
@@ -47,6 +59,10 @@ data class LibraryItem(
     val source: String,
     val addedAtEpochMillis: Long,
     val detailSyncedAtEpochMillis: Long?,
+    // Like / Super Like / Not Interested from Detail's feedback row - see
+    // Feedback object; null = no signal yet. Feeds the recommendation
+    // engine later; purely stored for now, no scoring logic reads it yet.
+    val feedback: Int?,
 ) {
     val posterUrl: String?
         get() = when (posterSource) {
@@ -82,4 +98,5 @@ fun MediaResult.toLibraryItem(source: LibrarySource): LibraryItem = LibraryItem(
     source = source.name,
     addedAtEpochMillis = System.currentTimeMillis(),
     detailSyncedAtEpochMillis = null,
+    feedback = null,
 )

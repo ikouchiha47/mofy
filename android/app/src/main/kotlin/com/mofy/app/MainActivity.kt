@@ -286,34 +286,48 @@ private fun MofyApp() {
                     contentPadding = contentPadding,
                     catalogRepository = catalogRepository,
                     onAdd = { catalogItem ->
-                        coroutineScope.launch {
-                            // Catalog items are IMDb-only (no poster) - try a TMDB
-                            // title search first so Add can pick up a real poster
-                            // (and tmdbId, upgrading it to sync-able going forward,
-                            // see DetailScreen's Sync info) instead of always
-                            // saving with a blank poster.
-                            val tmdbRepository = com.mofy.app.data.tmdb.TmdbRepository()
-                            val mediaType = if (catalogItem.titleType == "tvSeries") {
-                                com.mofy.app.data.tmdb.MediaType.TV
-                            } else {
-                                com.mofy.app.data.tmdb.MediaType.MOVIE
+                        // Catalog items are IMDb-only, never have a tmdbId - always
+                        // resolve via text search + user confirmation (radio-select,
+                        // not a blind first-result guess), same screen Detail's Sync
+                        // info falls back to. See RESOLVE_MATCH.
+                        val mediaType = if (catalogItem.titleType == "tvSeries") "TV" else "MOVIE"
+                        navController.navigate(PushedRoute.resolveMatch(catalogItem.title, mediaType))
+                    },
+                )
+            }
+            composable(PushedRoute.RESOLVE_MATCH) { backStack ->
+                val title = java.net.URLDecoder.decode(backStack.arguments?.getString("title") ?: "", "UTF-8")
+                val mediaTypeArg = backStack.arguments?.getString("mediaType") ?: "MOVIE"
+                val existingItemId = backStack.arguments?.getString("existingItemId")?.takeIf { it != "none" }
+                ConfirmMatchScreen(
+                    contentPadding = contentPadding,
+                    extractedTitle = title,
+                    mediaType = com.mofy.app.data.tmdb.MediaType.valueOf(mediaTypeArg),
+                    showDownloadAction = false,
+                    allowMultiSelect = false,
+                    onConfirm = {},
+                    onSaveToLibrary = { results ->
+                        val matched = results.firstOrNull()
+                        if (matched != null) {
+                            coroutineScope.launch {
+                                if (existingItemId != null) {
+                                    val existing = database.libraryDao().getById(existingItemId)
+                                    if (existing != null) {
+                                        val source = runCatching { LibrarySource.valueOf(existing.source) }.getOrDefault(LibrarySource.DISCOVERED)
+                                        database.libraryDao().update(
+                                            matched.toLibraryItem(source).copy(
+                                                id = existingItemId,
+                                                addedAtEpochMillis = existing.addedAtEpochMillis,
+                                            ),
+                                        )
+                                    }
+                                } else {
+                                    database.libraryDao().saveConfirmedMatch(matched.toLibraryItem(LibrarySource.DISCOVERED))
+                                }
                             }
-                            val searchResult = if (mediaType == com.mofy.app.data.tmdb.MediaType.TV) {
-                                tmdbRepository.searchTv(catalogItem.title)
-                            } else {
-                                tmdbRepository.searchMovies(catalogItem.title)
-                            }
-                            val match = (searchResult as? com.mofy.app.data.tmdb.TmdbResult.Success)?.data
-                                ?.let { results -> results.firstOrNull { it.year == catalogItem.startYear?.toString() } ?: results.firstOrNull() }
-
-                            val libraryItem = if (match != null) {
-                                match.toLibraryItem(LibrarySource.DISCOVERED)
-                            } else {
-                                catalogItem.toLibraryItem()
-                            }
-                            database.libraryDao().upsert(libraryItem)
                         }
-                        android.widget.Toast.makeText(context, "Added \"${catalogItem.title}\" to library", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(context, "Saved \"$title\"", android.widget.Toast.LENGTH_SHORT).show()
+                        navController.popBackStack()
                     },
                 )
             }
@@ -562,6 +576,9 @@ private fun MofyApp() {
                         }
                     },
                     onLink = { item -> navController.navigate(PushedRoute.link(item.id)) },
+                    onNeedsMatchResolution = { title, mediaType ->
+                        navController.navigate(PushedRoute.resolveMatch(title, mediaType.name, existingItemId = id))
+                    },
                 )
             }
             composable(PushedRoute.LINK) { backStack ->

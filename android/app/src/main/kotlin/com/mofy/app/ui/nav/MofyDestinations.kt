@@ -25,7 +25,14 @@ object PushedRoute {
     const val MANUAL_ENTRY_FORM = "manual_entry_form"
     const val SEARCH = "search"
     const val DISCOVER = "discover"
+    // Shared by Discover's "+" (no existing item, existingItemId "none") and
+    // Detail's "Sync info" when a direct tmdbId fetch isn't possible/fails
+    // (existingItemId set - the confirmed match updates that item in place
+    // rather than creating a new one).
+    const val RESOLVE_MATCH = "resolve_match/{title}/{mediaType}/{existingItemId}"
 
     fun editSite(siteName: String) = "edit_site/$siteName"
     fun link(itemId: String) = "link/$itemId"
+    fun resolveMatch(title: String, mediaType: String, existingItemId: String = "none") =
+        "resolve_match/${java.net.URLEncoder.encode(title, "UTF-8")}/$mediaType/$existingItemId"
 }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -65,6 +66,10 @@ fun DetailScreen(
     genreRepository: GenreRepository,
     onSearchForTorrent: (LibraryItem) -> Unit,
     onLink: (LibraryItem) -> Unit,
+    // Sync info's fallback when there's no tmdbId to fetch by, or the fetch
+    // 404s/fails - hands off to RESOLVE_MATCH (text search + user-confirmed
+    // radio-select), not a silent guess. See MainActivity.
+    onNeedsMatchResolution: (title: String, mediaType: MediaType) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val item by libraryDao.observeById(itemId).collectAsState(initial = null)
@@ -95,11 +100,14 @@ fun DetailScreen(
             item.year.isNullOrBlank() ||
             item.overview.isBlank()
 
-    suspend fun syncFromTmdb(force: Boolean) {
-        val tmdbId = current.tmdbId ?: return
-        val mediaType = current.mediaType?.let { MediaType.valueOf(it) } ?: return
+    // Returns true only on a real applied update - false covers both "no
+    // tmdbId to try" and "fetch failed/404", so callers can fall back to
+    // text-search resolution uniformly for either case.
+    suspend fun syncByTmdbId(force: Boolean): Boolean {
+        val tmdbId = current.tmdbId ?: return false
+        val mediaType = current.mediaType?.let { MediaType.valueOf(it) } ?: return false
         syncing = true
-        when (val result = tmdbRepository.getDetail(tmdbId, mediaType)) {
+        val applied = when (val result = tmdbRepository.getDetail(tmdbId, mediaType)) {
             is TmdbResult.Success -> {
                 val fetched = result.data
                 libraryDao.update(
@@ -111,15 +119,20 @@ fun DetailScreen(
                         detailSyncedAtEpochMillis = System.currentTimeMillis(),
                     ),
                 )
+                true
             }
-            is TmdbResult.Failure -> Unit // silent for the auto-heal path; manual button shows its own toast below
+            is TmdbResult.Failure -> false
         }
         syncing = false
+        return applied
     }
 
     LaunchedEffect(current.id) {
+        // Silent self-heal only tries the trusted by-id path - a failure
+        // here just leaves the item as-is until the user taps Sync info
+        // (which does fall back to search), no surprise navigation on open.
         if (current.tmdbId != null && hasRequiredFieldsMissing(current)) {
-            syncFromTmdb(force = false)
+            syncByTmdbId(force = false)
         }
     }
 
@@ -138,10 +151,10 @@ fun DetailScreen(
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                 } else {
-                    // Missing poster - a placeholder with a sync icon, not just
-                    // blank space, since a TMDB-matched item can self-heal this
-                    // (see the LaunchedEffect above) - the icon signals "this is
-                    // being/can be filled in", not "this item has no poster".
+                    // Plain placeholder, not an action affordance - the one
+                    // real "fix missing fields" control is the sync banner
+                    // below (single place, regardless of which field is
+                    // missing), not something implied by this box.
                     Box(
                         modifier = Modifier
                             .width(120.dp)
@@ -151,9 +164,9 @@ fun DetailScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            Icons.Filled.Sync,
-                            contentDescription = "Poster not synced yet",
-                            tint = Color(0xFF4EA1FF),
+                            Icons.Filled.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(28.dp),
                         )
                     }
@@ -186,45 +199,66 @@ fun DetailScreen(
                     }
                     // Always editable, not just shown when missing - Browse-
                     // derived types can be wrong too, see ADR 0004.
-                    Row(
-                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
-                    ) {
-                        Row {
-                            MediaTypeChip(
-                                label = "Movie",
-                                selected = current.mediaType == MediaType.MOVIE.name,
-                                onClick = {
-                                    coroutineScope.launch {
-                                        libraryDao.update(current.copy(mediaType = MediaType.MOVIE.name))
-                                    }
-                                },
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            MediaTypeChip(
-                                label = "TV",
-                                selected = current.mediaType == MediaType.TV.name,
-                                onClick = {
-                                    coroutineScope.launch {
-                                        libraryDao.update(current.copy(mediaType = MediaType.TV.name))
-                                    }
-                                },
-                            )
-                        }
-                        if (current.tmdbId != null) {
-                            SyncInfoButton(
-                                syncing = syncing,
-                                onClick = {
-                                    coroutineScope.launch {
-                                        syncFromTmdb(force = true)
-                                        android.widget.Toast.makeText(context, "Synced from TMDB", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                            )
-                        }
+                    Row(modifier = Modifier.padding(top = 8.dp)) {
+                        MediaTypeChip(
+                            label = "Movie",
+                            selected = current.mediaType == MediaType.MOVIE.name,
+                            onClick = {
+                                coroutineScope.launch {
+                                    libraryDao.update(current.copy(mediaType = MediaType.MOVIE.name))
+                                }
+                            },
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        MediaTypeChip(
+                            label = "TV",
+                            selected = current.mediaType == MediaType.TV.name,
+                            onClick = {
+                                coroutineScope.launch {
+                                    libraryDao.update(current.copy(mediaType = MediaType.TV.name))
+                                }
+                            },
+                        )
                     }
                 }
             }
+
+            // Single, unified sync affordance regardless of which required
+            // field is missing (poster/year/overview) - always in the same
+            // place, not implied by whichever field happens to be blank.
+            // Shown for any item missing required fields, tmdbId or not -
+            // the button itself decides id-fetch vs. text-search fallback.
+            if (hasRequiredFieldsMissing(current)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                ) {
+                    Text(
+                        "Some details are missing",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SyncInfoButton(
+                        syncing = syncing,
+                        onClick = {
+                            coroutineScope.launch {
+                                // Try the trusted by-id path first; fall back to
+                                // text-search + user confirmation (never a blind
+                                // guess) when there's no tmdbId or the fetch fails.
+                                val applied = syncByTmdbId(force = true)
+                                if (!applied) {
+                                    val mediaType = current.mediaType?.let { MediaType.valueOf(it) } ?: MediaType.MOVIE
+                                    onNeedsMatchResolution(current.title, mediaType)
+                                    return@launch
+                                }
+                                android.widget.Toast.makeText(context, "Synced from TMDB", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    )
+                }
+            }
+
             Text(current.overview, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 16.dp))
 
             val isLinked = activeLink != null

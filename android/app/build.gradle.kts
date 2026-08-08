@@ -52,6 +52,14 @@ android {
         buildConfig = true
     }
 
+    // Native SQLite extensions (sqlite-vec) are loaded from disk via
+    // BundledSQLiteDriver.addExtension() at runtime, which requires the .so
+    // to actually be extracted onto the filesystem rather than mapped
+    // directly out of the APK.
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -88,6 +96,9 @@ dependencies {
     implementation("androidx.room:room-runtime:2.8.1")
     implementation("androidx.room:room-ktx:2.8.1")
     ksp("androidx.room:room-compiler:2.8.1")
+    // Custom driver needed to load native SQLite extensions (sqlite-vec) -
+    // see docs/research/native-sqlite-extensions-android.md.
+    implementation("androidx.sqlite:sqlite-bundled:2.6.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

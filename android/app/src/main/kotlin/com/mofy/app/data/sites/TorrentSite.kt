@@ -19,6 +19,11 @@ data class SiteSearchConfig(
     // relative to the site's baseUrl.
     val searchPath: String,
     val headers: Map<String, String> = emptyMap(),
+    // true for sites whose search endpoint expects standard
+    // application/x-www-form-urlencoded spaces ("+", e.g. TorrentSeeker's
+    // Google Custom Search backend) - false (default) for sites that treat
+    // the query as a URL path segment and need "%20" instead (YTS).
+    val useFormEncodedSpaces: Boolean = false,
 )
 
 data class TorrentSite(
@@ -29,13 +34,16 @@ data class TorrentSite(
     val searchConfig: SiteSearchConfig? = null,
 ) {
     fun searchUrl(query: String): String? {
-        val path = searchConfig?.searchPath ?: return null
+        val config = searchConfig ?: return null
         // URLEncoder implements application/x-www-form-urlencoded (space ->
         // "+"), not path-segment percent-encoding (space -> "%20") - sites
         // that treat the search term as a URL path segment (YTS) break on
-        // "+", so it's swapped for "%20" after encoding everything else.
-        val encoded = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
-        val resolved = path.replace("{query}", encoded)
+        // "+", so it's swapped for "%20" after encoding everything else,
+        // unless the site explicitly wants form-encoded spaces (TorrentSeeker).
+        val encoded = URLEncoder.encode(query, "UTF-8").let {
+            if (config.useFormEncodedSpaces) it else it.replace("+", "%20")
+        }
+        val resolved = config.searchPath.replace("{query}", encoded)
         return if (resolved.startsWith("http")) resolved else baseUrl.trimEnd('/') + "/" + resolved.trimStart('/')
     }
 }
@@ -61,6 +69,23 @@ object SiteCatalog {
             searchConfig = SiteSearchConfig(
                 method = HttpMethod.GET,
                 searchPath = "https://eztv.proxyninja.org/search/?q1={query}&search=Search",
+            ),
+        ),
+        // Meta-search (Google Custom Search widget over "dozens of search
+        // engines", not a single torrent index) - no fixed page structure
+        // to extract a title from, so titleSelector is null same as EZTV.
+        // Magnet capture still works: it's scheme-based
+        // (shouldOverrideUrlLoading on magnet: URIs in TorrentWebViewScreen),
+        // not tied to any specific site's markup.
+        TorrentSite(
+            name = "TorrentSeeker",
+            baseUrl = "https://torrentseeker.com/",
+            category = MediaType.MOVIE,
+            titleSelector = null,
+            searchConfig = SiteSearchConfig(
+                method = HttpMethod.GET,
+                searchPath = "/search.php?q={query}",
+                useFormEncodedSpaces = true,
             ),
         ),
     )

@@ -26,6 +26,11 @@ fun loadEnv(): Properties {
 
 val env = loadEnv()
 val tmdbApiKey: String = env.getProperty("TMDB_API_KEY", "")
+// Watch Together signaling relay (B7). Empty = host embeds local WS server.
+// Examples: ws://192.168.1.20:8787  |  wss://mofy-sig.fly.dev
+val wtSignalingUrl: String = env.getProperty("WT_SIGNALING_URL", "")
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.mofy.app"
@@ -39,6 +44,7 @@ android {
         versionName = "0.1"
 
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
+        buildConfigField("String", "WT_SIGNALING_URL", "\"$wtSignalingUrl\"")
     }
 
     buildTypes {
@@ -108,6 +114,23 @@ dependencies {
     // Custom driver needed to load native SQLite extensions (sqlite-vec) -
     // see docs/research/native-sqlite-extensions-android.md.
     implementation("androidx.sqlite:sqlite-bundled:2.6.0")
+
+    // In-app media engine, shared by solo playback (Phase 07) and Watch
+    // Together (Phase 13). ADR 0006: libVLC over mpv/ExoPlayer/external VLC.
+    implementation("org.videolan.android:libvlc-all:3.6.2")
+
+    // Watch Together signaling bootstrap (B7): embedded host/relay WebSocket
+    // server. Client side uses OkHttp WebSocket (already a dependency).
+    // Same server binary can later run on Fly; app points at it via
+    // SignalingSettings.relayBaseUrl.
+    implementation("org.java-websocket:Java-WebSocket:1.5.7")
+
+    // Watch Together data plane (B8+): WebRTC DataChannel only, no media.
+    // stream-webrtc-android 1.3.10 is current stable 1.x on Maven Central.
+    implementation("io.getstream:stream-webrtc-android:1.3.10")
+
+    // Watch Together Stage C: QR encoding of the room deep link.
+    implementation("com.google.zxing:core:3.5.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

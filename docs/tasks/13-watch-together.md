@@ -598,7 +598,38 @@ Corners slightly rounded (not pill). Explicit `shape` on Buttons.
   (unless nav requires a route — then `watch_together/join`).
 
 **Acceptance criteria:**
-- [ ] Routes compile; no UI polish required yet beyond empty scaffolds.
+- [x] Routes compile; no UI polish required yet beyond empty scaffolds.
+
+> **Session ownership (2026-08-12):** `WatchTogetherSessionViewModel`
+> (`ui/watchtogether/WatchTogetherSessionViewModel.kt`) — a `ViewModel`
+> `remember()`-ed once in `MofyApp`, same app-scoped pattern as
+> `BrowseSessionViewModel`. Holds the active `WatchTogetherSession?` plus
+> the `LibraryItem?` it's bound to, and a derived `sessionState:
+> StateFlow<SessionState?>` (via `flatMapLatest`) for `LiveSessionBar`/
+> `SessionPill` to observe without each caller re-deriving it.
+>
+> **Known v1 gap, called out rather than silently papered over:** the
+> lobby session (`CreateRoomScreen`/`GuestLobbyScreen`) is created with a
+> headless `FakePlayerController` (no media chosen yet — room code/QR/
+> participants don't need real playback). "Start watching" / the guest's
+> auto-transition re-creates the `WatchTogetherSession` bound to the real
+> `VlcPlayerController`, reusing the same `roomKey` for display
+> continuity — but this stands up a **new** signaling connection/DataChannel
+> under the hood, so any guest connected during the lobby phase has to
+> reconnect. Fixing this properly needs `WatchTogetherSession` to expose a
+> player-swap instead of full recreation, which is a `WatchTogetherSession`/
+> `SyncEngine` (Stage B, locked) change, not a Stage C wiring change — left
+> as a follow-up, not invented here.
+>
+> **Home's Join (C5) also needed a small, sanctioned adjustment to
+> `JoinSessionSheet`:** ADR 0006's `Join` message requires `itemHash`
+> *before* connecting, so — unlike the mockup's "match card shown after
+> connecting" framing — Home genuinely cannot open the sheet with an
+> unresolved item. `JoinSessionSheet`'s `libraryItem`/`itemHash` params are
+> now nullable; when null it shows an additive "pick a title" step
+> (`libraryItems` param, from `LibraryDao.observeAll()`) before the
+> existing 6-digit code entry. Detail's entry point (a known item) is
+> unaffected — same non-null args as before.
 
 ### C2 — `CreateRoomScreen` (Compose)
 **Build:** Per mockup frames 1b/3a — room code display via
@@ -636,13 +667,16 @@ default: implement code entry fully; QR scan can be C3b).
 that `LibraryItem`. Compute `ItemHash.of(item)`.
 
 **Acceptance criteria:**
-- [ ] Physical device: tap → create screen with live code.
+- [ ] Physical device: tap → create screen with live code. (Wired and
+  compiling — `DetailScreen`'s Watch Together button navigates to
+  `watch_together/create/{id}`; device verification still pending.)
 
 ### C5 — Wire Home 👥
 **Build:** Open `JoinSessionSheet`.
 
 **Acceptance criteria:**
-- [ ] Icon no longer inert.
+- [x] Icon no longer inert — opens `JoinSessionSheet` (via the item-picker
+  step described in the C1 note above).
 
 ### C6 — Active session pill + persistent live bar
 **Build:** Per mockup 5a/5b and user decision:
@@ -652,8 +686,11 @@ that `LibraryItem`. Compute `ItemHash.of(item)`.
   service when player lands).
 
 **Acceptance criteria:**
-- [ ] Visible on host and guest during real session.
-- [ ] Tap returns to session UI.
+- [ ] Visible on host and guest during real session. (Wired and compiling —
+  `SessionPill` on Detail when the active session's `itemHash` matches the
+  item on screen; `LiveSessionBar` in `MainActivity`'s Scaffold on every
+  other route while a session is active. Two-device verification pending.)
+- [x] Tap returns to session UI — both navigate to `watch_together/session`.
 
 ### C7 — In-app player screen (libVLC) hooked to session
 **Build:** Compose screen hosting `VlcPlayerController` surface;

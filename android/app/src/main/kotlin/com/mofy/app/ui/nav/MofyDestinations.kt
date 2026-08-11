@@ -31,8 +31,15 @@ object PushedRoute {
     // rather than creating a new one).
     const val RESOLVE_MATCH = "resolve_match/{title}/{mediaType}/{existingItemId}"
 
+    // Watch Together (Phase 13) - see docs/tasks/13-watch-together.md C1.
+    // Join is a modal bottom sheet from Home, not its own route.
+    const val WT_CREATE = "watch_together/create/{libraryItemId}"
+    const val WT_SESSION = "watch_together/session"
+    const val WT_SCAN = "watch_together/scan"
+
     fun editSite(siteName: String) = "edit_site/$siteName"
     fun link(itemId: String) = "link/$itemId"
     fun resolveMatch(title: String, mediaType: String, existingItemId: String = "none") =
         "resolve_match/${java.net.URLEncoder.encode(title, "UTF-8")}/$mediaType/$existingItemId"
+    fun watchTogetherCreate(libraryItemId: String) = "watch_together/create/$libraryItemId"
 }

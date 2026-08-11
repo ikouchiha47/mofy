@@ -5,7 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Groups
@@ -22,10 +25,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -55,6 +62,19 @@ import com.mofy.app.ui.nav.TopLevelDestination
 import com.mofy.app.ui.settings.SettingsScreen
 import com.mofy.app.ui.sites.EditSiteScreen
 import com.mofy.app.ui.theme.MofyTheme
+import com.mofy.app.playback.FakePlayerController
+import com.mofy.app.ui.watchtogether.CreateRoomScreen
+import com.mofy.app.ui.watchtogether.GuestLobbyScreen
+import com.mofy.app.ui.watchtogether.JoinSessionSheet
+import com.mofy.app.ui.watchtogether.LiveSessionBar
+import com.mofy.app.ui.watchtogether.PlayerScreen
+import com.mofy.app.ui.watchtogether.QrScanScreen
+import com.mofy.app.ui.watchtogether.WatchTogetherSessionViewModel
+import com.mofy.app.ui.watchtogether.shareWatchTogetherInvite
+import com.mofy.app.watchtogether.ItemHash
+import com.mofy.app.watchtogether.Role
+import com.mofy.app.watchtogether.WatchTogetherSession
+import com.mofy.app.watchtogether.signaling.SignalingSettings
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +106,9 @@ private fun MofyApp() {
     // (currentRoute changes), and without it this would silently reset the
     // selected category/extracted title on every screen transition.
     val browseSessionViewModel = remember { BrowseSessionViewModel() }
+    val watchTogetherViewModel = remember { WatchTogetherSessionViewModel() }
+    var showJoinSheet by remember { mutableStateOf(false) }
+    var joinPickedItem by remember { mutableStateOf<com.mofy.app.data.library.LibraryItem?>(null) }
 
     val context = LocalContext.current
     val database = remember { AppDatabase.get(context) }
@@ -116,7 +139,7 @@ private fun MofyApp() {
                 TopLevelDestination.HOME.route -> TopAppBar(
                     title = { Text("Mofy") },
                     actions = {
-                        IconButton(onClick = { /* Watch Together join sheet - Phase 13 */ }) {
+                        IconButton(onClick = { showJoinSheet = true }) {
                             Icon(Icons.Filled.Groups, contentDescription = "Join a Watch Together session")
                         }
                         IconButton(onClick = { navController.navigate(PushedRoute.SEARCH) }) {
@@ -255,6 +278,8 @@ private fun MofyApp() {
             }
         },
     ) { contentPadding ->
+        val watchTogetherSession by watchTogetherViewModel.session.collectAsState()
+        Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.HOME.route,
@@ -557,6 +582,11 @@ private fun MofyApp() {
             }
             composable(ROUTE_DETAIL) { backStack ->
                 val id = backStack.arguments?.getString("id") ?: ""
+                val detailItem by database.libraryDao().observeById(id).collectAsState(initial = null)
+                val liveSessionForDetail by watchTogetherViewModel.sessionState.collectAsState()
+                val sessionMatchesDetail = detailItem != null &&
+                    liveSessionForDetail != null &&
+                    liveSessionForDetail?.itemHash == ItemHash.of(detailItem!!)
                 DetailScreen(
                     contentPadding = contentPadding,
                     itemId = id,
@@ -579,6 +609,11 @@ private fun MofyApp() {
                     onNeedsMatchResolution = { title, mediaType ->
                         navController.navigate(PushedRoute.resolveMatch(title, mediaType.name, existingItemId = id))
                     },
+                    onWatchTogether = { item ->
+                        navController.navigate(PushedRoute.watchTogetherCreate(item.id))
+                    },
+                    activeWatchTogetherSession = if (sessionMatchesDetail) liveSessionForDetail else null,
+                    onReturnToWatchTogetherSession = { navController.navigate(PushedRoute.WT_SESSION) },
                 )
             }
             composable(PushedRoute.LINK) { backStack ->
@@ -658,6 +693,155 @@ private fun MofyApp() {
                     },
                 )
             }
+            composable(PushedRoute.WT_CREATE) { backStack ->
+                val libraryItemId = backStack.arguments?.getString("libraryItemId") ?: ""
+                val createItem by database.libraryDao().observeById(libraryItemId).collectAsState(initial = null)
+                val resolvedItem = createItem
+                if (resolvedItem == null) {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "Loading…")
+                } else {
+                    val hostSession = remember(resolvedItem.id) {
+                        WatchTogetherSession.host(
+                            itemHash = ItemHash.of(resolvedItem),
+                            displayName = "You",
+                            player = FakePlayerController(),
+                            appContext = context,
+                        )
+                    }
+                    androidx.compose.runtime.LaunchedEffect(hostSession) {
+                        watchTogetherViewModel.setActive(hostSession, resolvedItem)
+                    }
+                    CreateRoomScreen(
+                        contentPadding = contentPadding,
+                        session = hostSession,
+                        onStartWatching = { navController.navigate(PushedRoute.WT_SESSION) },
+                    )
+                }
+            }
+            composable(PushedRoute.WT_SESSION) {
+                val activeSession = watchTogetherSession
+                val activeItem by watchTogetherViewModel.activeItem.collectAsState()
+                if (activeSession == null) {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "No active Watch Together session")
+                } else {
+                    val sessionUiState by activeSession.state.collectAsState()
+                    if (activeSession.role == Role.GUEST && !sessionUiState.isPlaying) {
+                        GuestLobbyScreen(
+                            contentPadding = contentPadding,
+                            session = activeSession,
+                            onSessionStarted = { /* handled by the isPlaying check above on recomposition */ },
+                            onLeave = {
+                                watchTogetherViewModel.clear()
+                                navController.popBackStack(TopLevelDestination.HOME.route, inclusive = false)
+                            },
+                        )
+                    } else {
+                        val activeLink by (activeItem?.let { database.libraryDao().observeActiveLink(it.id) } ?: kotlinx.coroutines.flow.emptyFlow())
+                            .collectAsState(initial = null)
+                        PlayerScreen(
+                            contentPadding = contentPadding,
+                            mediaUri = activeLink?.movieUri ?: "",
+                            itemTitle = activeItem?.title ?: "",
+                            createSession = { realPlayer ->
+                                // Lobby sessions are created with a headless FakePlayerController
+                                // (no media chosen yet); starting playback re-creates the session
+                                // bound to the real VlcPlayerController, reusing the same roomKey.
+                                // This is a known v1 gap: any guest connected during the lobby
+                                // phase must reconnect, since a new signaling/transport is
+                                // stood up under the hood - see docs/tasks/13-watch-together.md C1.
+                                activeSession.end()
+                                val fresh = if (activeSession.role == Role.HOST) {
+                                    WatchTogetherSession.host(
+                                        itemHash = activeSession.itemHash,
+                                        displayName = "You",
+                                        player = realPlayer,
+                                        appContext = context,
+                                        roomKey = activeSession.roomKey,
+                                    )
+                                } else {
+                                    WatchTogetherSession.guest(
+                                        roomKey = activeSession.roomKey,
+                                        signalingUrl = activeSession.signalingUrl
+                                            ?: SignalingSettings.urlForRoom(activeSession.roomKey)
+                                            ?: error("no signaling url"),
+                                        itemHash = activeSession.itemHash,
+                                        displayName = "You",
+                                        player = realPlayer,
+                                        appContext = context,
+                                    )
+                                }
+                                watchTogetherViewModel.setActive(fresh, activeItem)
+                                fresh
+                            },
+                            onBack = { navController.popBackStack() },
+                            onInvite = { watchTogetherViewModel.session.value?.let { shareWatchTogetherInvite(context, it) } },
+                        )
+                    }
+                }
+            }
+            composable(PushedRoute.WT_SCAN) {
+                QrScanScreen(
+                    onScanned = { parsed ->
+                        val pickedItem = joinPickedItem
+                        if (pickedItem != null) {
+                            val signalingUrl = parsed.signalingUrl ?: SignalingSettings.urlForRoom(parsed.roomKey)
+                            if (signalingUrl != null) {
+                                val guestSession = WatchTogetherSession.guest(
+                                    roomKey = parsed.roomKey,
+                                    signalingUrl = signalingUrl,
+                                    itemHash = ItemHash.of(pickedItem),
+                                    displayName = "You",
+                                    player = FakePlayerController(),
+                                    appContext = context,
+                                )
+                                watchTogetherViewModel.setActive(guestSession, pickedItem)
+                                joinPickedItem = null
+                                navController.popBackStack(TopLevelDestination.HOME.route, inclusive = false)
+                                navController.navigate(PushedRoute.WT_SESSION)
+                            }
+                        } else {
+                            showJoinSheet = true
+                            navController.popBackStack()
+                        }
+                    },
+                    onCancel = { navController.popBackStack() },
+                )
+            }
+        }
+        if (watchTogetherSession != null && currentRoute != ROUTE_DETAIL && currentRoute != PushedRoute.WT_SESSION) {
+            val liveState by watchTogetherViewModel.sessionState.collectAsState()
+            LiveSessionBar(
+                session = liveState,
+                onReturnToSession = { navController.navigate(PushedRoute.WT_SESSION) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(contentPadding)
+                    .padding(12.dp),
+            )
+        }
+        }
+        if (showJoinSheet) {
+            val allLibraryItems by database.libraryDao().observeAll().collectAsState(initial = emptyList())
+            JoinSessionSheet(
+                libraryItem = joinPickedItem,
+                itemHash = null,
+                player = FakePlayerController(),
+                appContext = context,
+                displayName = "You",
+                libraryItems = allLibraryItems,
+                onLibraryItemPicked = { joinPickedItem = it },
+                onDismiss = { showJoinSheet = false },
+                onScanQr = {
+                    showJoinSheet = false
+                    navController.navigate(PushedRoute.WT_SCAN)
+                },
+                onJoined = { session ->
+                    watchTogetherViewModel.setActive(session, joinPickedItem)
+                    joinPickedItem = null
+                    showJoinSheet = false
+                    navController.navigate(PushedRoute.WT_SESSION)
+                },
+            )
         }
     }
 }

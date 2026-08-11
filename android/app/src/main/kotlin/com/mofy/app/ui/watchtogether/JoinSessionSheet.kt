@@ -2,6 +2,7 @@ package com.mofy.app.ui.watchtogether
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,9 +11,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,12 +51,14 @@ import com.mofy.app.ui.theme.MofySurface
 import com.mofy.app.ui.theme.MofySurfaceVariant
 import com.mofy.app.ui.theme.MofyText
 import com.mofy.app.ui.theme.MofyTextDim
+import com.mofy.app.watchtogether.ItemHash
 import com.mofy.app.watchtogether.RoomCode
 import com.mofy.app.watchtogether.RoomKey
 import com.mofy.app.watchtogether.WatchTogetherSession
 import com.mofy.app.watchtogether.signaling.SignalingSettings
 
 private sealed interface JoinPhase {
+    data object PickingItem : JoinPhase
     data object Entering : JoinPhase
     data class Connecting(val session: WatchTogetherSession) : JoinPhase
     data class Failed(val reason: String) : JoinPhase
@@ -62,22 +68,33 @@ private sealed interface JoinPhase {
  * Mockup 2b/2c/2d. Digit entry with auto-advance, then a connect attempt
  * against [WatchTogetherSession.guest] with inline error/loading states -
  * no navigation, that's the caller's job via [onJoined].
+ *
+ * [libraryItem]/[itemHash] are null for the Home entry point, which doesn't
+ * know the title up front (ADR 0006's Join message requires itemHash
+ * before connecting, so - unlike the mockup's "match after connect" framing -
+ * the title must actually be picked first; [libraryItems] backs a lightweight
+ * picker step shown in that case).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JoinSessionSheet(
-    libraryItem: LibraryItem,
-    itemHash: String,
+    libraryItem: LibraryItem?,
+    itemHash: String?,
     player: PlayerController,
     appContext: Context,
     displayName: String,
     onDismiss: () -> Unit,
     onScanQr: () -> Unit,
     onJoined: (WatchTogetherSession) -> Unit,
+    libraryItems: List<LibraryItem> = emptyList(),
+    onLibraryItemPicked: (LibraryItem) -> Unit = {},
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
     var digits by remember { mutableStateOf(List(RoomKey.LENGTH) { "" }) }
-    var phase by remember { mutableStateOf<JoinPhase>(JoinPhase.Entering) }
+    var pickedItem by remember { mutableStateOf(libraryItem) }
+    var phase by remember {
+        mutableStateOf<JoinPhase>(if (libraryItem == null) JoinPhase.PickingItem else JoinPhase.Entering)
+    }
     val focusRequesters = remember { List(RoomKey.LENGTH) { FocusRequester() } }
     val roomCode = digits.joinToString("")
 
@@ -105,14 +122,25 @@ fun JoinSessionSheet(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
             when (val current = phase) {
+                is JoinPhase.PickingItem -> PickItemContent(
+                    libraryItems = libraryItems,
+                    onPick = { item ->
+                        pickedItem = item
+                        onLibraryItemPicked(item)
+                        phase = JoinPhase.Entering
+                    },
+                )
                 is JoinPhase.Entering -> EnteringContent(
                     digits = digits,
                     focusRequesters = focusRequesters,
                     onDigitsChange = { digits = it },
                     onJoin = {
+                        val resolvedItem = pickedItem
+                        val resolvedHash = itemHash ?: resolvedItem?.let { ItemHash.of(it) }
                         val parsed = RoomCode.parseUserInput(roomCode)
                         val signalingUrl = parsed?.let { SignalingSettings.urlForRoom(it) }
                         when {
+                            resolvedHash == null -> phase = JoinPhase.Failed("Pick a title first")
                             parsed == null -> phase = JoinPhase.Failed("Invalid room code")
                             signalingUrl == null -> phase = JoinPhase.Failed(
                                 "No relay configured - use Scan QR or a share link instead",
@@ -121,7 +149,7 @@ fun JoinSessionSheet(
                                 val session = WatchTogetherSession.guest(
                                     roomKey = parsed,
                                     signalingUrl = signalingUrl,
-                                    itemHash = itemHash,
+                                    itemHash = resolvedHash,
                                     displayName = displayName,
                                     player = player,
                                     appContext = appContext,
@@ -132,13 +160,61 @@ fun JoinSessionSheet(
                     },
                     onScanQr = onScanQr,
                 )
-                is JoinPhase.Connecting -> ConnectingContent(libraryItem = libraryItem, roomCode = roomCode)
-                is JoinPhase.Failed -> FailedContent(
+                is JoinPhase.Connecting -> pickedItem?.let {
+                    ConnectingContent(libraryItem = it, roomCode = roomCode)
+                }
+                is JoinPhase.Failed -> pickedItem?.let {
+                    FailedContent(
+                        reason = current.reason,
+                        libraryItem = it,
+                        roomCode = roomCode,
+                        onRetry = { phase = JoinPhase.Entering },
+                    )
+                } ?: FailedContent(
                     reason = current.reason,
-                    libraryItem = libraryItem,
-                    roomCode = roomCode,
-                    onRetry = { phase = JoinPhase.Entering },
+                    onRetry = { phase = JoinPhase.PickingItem },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickItemContent(
+    libraryItems: List<LibraryItem>,
+    onPick: (LibraryItem) -> Unit,
+) {
+    Text("Join Watch Together", style = MaterialTheme.typography.titleLarge, color = MofyText)
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "What are you joining to watch? Pick the title from your library.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MofyTextDim,
+    )
+    Spacer(Modifier.height(16.dp))
+    if (libraryItems.isEmpty()) {
+        Text(
+            "Your library is empty - add the title first.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MofyTextDim,
+            modifier = Modifier.padding(vertical = 24.dp),
+        )
+    } else {
+        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+            items(libraryItems, key = { it.id }) { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(item) }
+                        .padding(vertical = 10.dp),
+                ) {
+                    Column {
+                        Text(item.title, style = MaterialTheme.typography.bodyMedium, color = MofyText)
+                        if (!item.year.isNullOrBlank()) {
+                            Text(item.year, style = MaterialTheme.typography.bodySmall, color = MofyTextDim)
+                        }
+                    }
+                }
             }
         }
     }
@@ -246,8 +322,8 @@ private fun ConnectingContent(libraryItem: LibraryItem, roomCode: String) {
 @Composable
 private fun FailedContent(
     reason: String,
-    libraryItem: LibraryItem,
-    roomCode: String,
+    libraryItem: LibraryItem? = null,
+    roomCode: String = "",
     onRetry: () -> Unit,
 ) {
     Column(
@@ -258,8 +334,10 @@ private fun FailedContent(
         Spacer(Modifier.height(4.dp))
         Text(reason, style = MaterialTheme.typography.bodyMedium, color = MofyTextDim, textAlign = TextAlign.Center)
         Spacer(Modifier.height(20.dp))
-        MatchCard(libraryItem = libraryItem, subtitle = "${libraryItem.year ?: ""}".trim())
-        Spacer(Modifier.height(20.dp))
+        if (libraryItem != null) {
+            MatchCard(libraryItem = libraryItem, subtitle = "${libraryItem.year ?: ""}".trim())
+            Spacer(Modifier.height(20.dp))
+        }
         Button(
             onClick = onRetry,
             modifier = Modifier.fillMaxWidth(),

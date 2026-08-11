@@ -55,6 +55,8 @@ import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.data.tmdb.TmdbRepository
 import com.mofy.app.data.tmdb.TmdbResult
+import com.mofy.app.ui.watchtogether.SessionPill
+import com.mofy.app.watchtogether.SessionState
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
@@ -70,6 +72,11 @@ fun DetailScreen(
     // 404s/fails - hands off to RESOLVE_MATCH (text search + user-confirmed
     // radio-select), not a silent guess. See MainActivity.
     onNeedsMatchResolution: (title: String, mediaType: MediaType) -> Unit = { _, _ -> },
+    onWatchTogether: (LibraryItem) -> Unit = {},
+    // Non-null + matching this item's itemHash only when a Watch Together
+    // session for this exact title is currently active - see C6.
+    activeWatchTogetherSession: SessionState? = null,
+    onReturnToWatchTogetherSession: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val item by libraryDao.observeById(itemId).collectAsState(initial = null)
@@ -336,15 +343,21 @@ fun DetailScreen(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Button(
-                    onClick = {
-                        android.widget.Toast.makeText(context, "Watch Party is coming soon", android.widget.Toast.LENGTH_SHORT).show()
-                    },
+                    onClick = { onWatchTogether(current) },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Watch Party")
                 }
+            }
+
+            if (activeWatchTogetherSession != null) {
+                SessionPill(
+                    session = activeWatchTogetherSession,
+                    onReturnToSession = onReturnToWatchTogetherSession,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
             }
 
             Text(

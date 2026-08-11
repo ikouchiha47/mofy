@@ -1,6 +1,5 @@
 package com.mofy.app.ui.watchtogether
 
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -101,13 +100,7 @@ fun CreateRoomScreen(
             }
 
             Button(
-                onClick = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, "Join me: $shareLabel\n${session.deepLink}")
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share invite"))
-                },
+                onClick = { shareWatchTogetherInvite(context, session) },
                 shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
             ) {

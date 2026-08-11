@@ -132,6 +132,14 @@ dependencies {
     // Watch Together Stage C: QR encoding of the room deep link.
     implementation("com.google.zxing:core:3.5.3")
 
+    // Watch Together Stage C3b: camera QR scan for join-by-scan (zxing
+    // above is encode-only, this is the decode side).
+    implementation("androidx.camera:camera-core:1.4.1")
+    implementation("androidx.camera:camera-camera2:1.4.1")
+    implementation("androidx.camera:camera-lifecycle:1.4.1")
+    implementation("androidx.camera:camera-view:1.4.1")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Architecture rules (Konsist works on Kotlin source/PSI, not bytecode -

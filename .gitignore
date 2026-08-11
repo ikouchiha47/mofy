@@ -13,3 +13,8 @@ android/*.iml
 ml/data/
 ml/.venv/
 ml/__pycache__/
+
+# Local test video files (Watch Together manual testing)
+*.webm
+*.mp4
+*.mkv

@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ManualEntryScreen(
     contentPadding: PaddingValues,
-    onSave: (LibraryItem) -> Unit,
+    onSave: (LibraryItem, fileUrl: String?) -> Unit,
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -76,6 +76,8 @@ fun ManualEntryScreen(
     var posterPath by remember { mutableStateOf<String?>(null) }
     var localPosterUri by remember { mutableStateOf<Uri?>(null) }
     var posterSource by remember { mutableStateOf(PosterSource.NONE) }
+
+    var fileUrl by remember { mutableStateOf("") }
 
     var posterSearchResults by remember { mutableStateOf<List<MediaResult>>(emptyList()) }
     var posterSearchLoading by remember { mutableStateOf(false) }
@@ -221,6 +223,20 @@ fun ManualEntryScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
         )
 
+        OutlinedTextField(
+            value = fileUrl,
+            onValueChange = { fileUrl = it },
+            label = { Text("File URL (optional)") },
+            placeholder = { Text("/sdcard/Movies/movie.mp4") },
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        )
+        Text(
+            "If set, this file is linked and activated immediately - useful for manual testing (e.g. Watch Together) without a separate Link step.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
         Text(
             "Poster falls back to a placeholder if nothing is picked - nothing here is required except the title.",
             style = MaterialTheme.typography.bodySmall,
@@ -253,6 +269,7 @@ fun ManualEntryScreen(
                         detailSyncedAtEpochMillis = null,
                         feedback = null,
                     ),
+                    fileUrl.trim().ifBlank { null },
                 )
             },
             enabled = title.isNotBlank(),

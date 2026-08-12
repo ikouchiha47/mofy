@@ -41,6 +41,7 @@ import androidx.navigation.compose.rememberNavController
 import com.mofy.app.data.catalog.toLibraryItem
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.library.LibraryDownload
+import com.mofy.app.data.library.LibraryLink
 import com.mofy.app.data.library.LibrarySource
 import com.mofy.app.data.library.ResourceType
 import com.mofy.app.data.library.downloadDedupeKey
@@ -396,9 +397,22 @@ private fun MofyApp() {
             composable(PushedRoute.MANUAL_ENTRY_FORM) {
                 com.mofy.app.ui.library.ManualEntryScreen(
                     contentPadding = contentPadding,
-                    onSave = { libraryItem ->
+                    onSave = { libraryItem, fileUrl ->
                         coroutineScope.launch {
                             database.libraryDao().upsert(libraryItem)
+                            if (fileUrl != null) {
+                                database.libraryDao().addAndActivateLink(
+                                    LibraryLink(
+                                        libraryItemKey = libraryItem.id,
+                                        label = null,
+                                        movieUri = fileUrl,
+                                        subtitleUri = null,
+                                        subtitle2Uri = null,
+                                        isActive = false,
+                                        linkedAtEpochMillis = System.currentTimeMillis(),
+                                    ),
+                                )
+                            }
                         }
                         android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
                         navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)

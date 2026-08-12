@@ -45,6 +45,13 @@ android {
 
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         buildConfigField("String", "WT_SIGNALING_URL", "\"$wtSignalingUrl\"")
+
+        // Personal-use app installed only on our own arm64 phones - shipping
+        // libVLC + WebRTC native libs for x86/x86_64/armeabi-v7a as well
+        // roughly quadruples APK size for architectures nobody runs.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {

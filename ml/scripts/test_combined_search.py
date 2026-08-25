@@ -66,7 +66,7 @@ class MultiHeadFacetModel(nn.Module):
         self.has_rating_head = nn.Linear(hidden, 1)
         self.rating_head = nn.Linear(hidden, 1)
         self.popularity_head = nn.Linear(hidden, 3)
-        self.has_title_head = nn.Linear(hidden, 1)
+        self.has_name_head = nn.Linear(hidden, 1)
         self.has_mood_head = nn.Linear(hidden, 1)
         self.has_other_head = nn.Linear(hidden, 1)
 
@@ -82,7 +82,7 @@ class MultiHeadFacetModel(nn.Module):
             "has_rating_logits": self.has_rating_head(h).squeeze(-1),
             "rating_pred": self.rating_head(h).squeeze(-1),
             "popularity_logits": self.popularity_head(h),
-            "has_title_logits": self.has_title_head(h).squeeze(-1),
+            "has_name_logits": self.has_name_head(h).squeeze(-1),
             "has_mood_logits": self.has_mood_head(h).squeeze(-1),
             "has_other_logits": self.has_other_head(h).squeeze(-1),
         }
@@ -259,9 +259,9 @@ TEST_CASES = [
     # Binger — what's new in a genre
     ("Binger",        "new sci-fi shows released in the last few years",
      "Sci-Fi; recent years ~2020+"),
-    # Hunter — title lookup (model should detect has_title)
+    # Hunter — title lookup (model should detect has_name)
     ("Hunter",        "blade runner 2049",
-     "has_title=true; Sci-Fi; 2017"),
+     "has_name=true; Sci-Fi; 2017"),
 ]
 
 
@@ -305,7 +305,7 @@ def main():
             print(f"  runtime≤{facets['runtime_max']}min", end="")
         if facets.get("has_rating"):
             print(f"  rating≥{facets['rating_min']}", end="")
-        if facets.get("has_title"):
+        if facets.get("has_name"):
             print(f"  [title query]", end="")
         print()
         print(f"  expect → {expected}")

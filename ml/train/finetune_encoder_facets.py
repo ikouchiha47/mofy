@@ -243,7 +243,7 @@ class FacetLabel:
     has_rating: float = 0.0
     rating_min: float = 0.0
     popularity: int = POP_NONE  # class id
-    has_title: float = 0.0
+    has_name: float = 0.0
     has_mood: float = 0.0
     has_other: float = 0.0
 
@@ -255,7 +255,7 @@ class FacetLabel:
             "has_runtime": bool(self.has_runtime >= 0.5),
             "has_rating": bool(self.has_rating >= 0.5),
             "popularity": POP_NAMES[self.popularity],
-            "has_title": bool(self.has_title >= 0.5),
+            "has_name": bool(self.has_name >= 0.5),
             "has_mood": bool(self.has_mood >= 0.5),
             "has_other": bool(self.has_other >= 0.5),
         }
@@ -331,8 +331,8 @@ def spans_to_label(query: str, spans: list[dict]) -> FacetLabel:
         elif stype == "popularity":
             lab.popularity = popularity_class(span_text)
 
-        elif stype == "title":
-            lab.has_title = 1.0
+        elif stype == "name":
+            lab.has_name = 1.0
 
         elif stype == "mood":
             lab.has_mood = 1.0
@@ -394,7 +394,7 @@ class MultiHeadFacetModel(nn.Module):
         self.has_rating_head = nn.Linear(hidden, 1)
         self.rating_head = nn.Linear(hidden, 1)
         self.popularity_head = nn.Linear(hidden, 3)
-        self.has_title_head = nn.Linear(hidden, 1)
+        self.has_name_head = nn.Linear(hidden, 1)
         self.has_mood_head = nn.Linear(hidden, 1)
         self.has_other_head = nn.Linear(hidden, 1)
 
@@ -412,7 +412,7 @@ class MultiHeadFacetModel(nn.Module):
             "has_rating_logits": self.has_rating_head(h).squeeze(-1),
             "rating_pred": self.rating_head(h).squeeze(-1),
             "popularity_logits": self.popularity_head(h),
-            "has_title_logits": self.has_title_head(h).squeeze(-1),
+            "has_name_logits": self.has_name_head(h).squeeze(-1),
             "has_mood_logits": self.has_mood_head(h).squeeze(-1),
             "has_other_logits": self.has_other_head(h).squeeze(-1),
         }
@@ -470,7 +470,7 @@ class FacetDataset(Dataset):
                 dtype=torch.float,
             ),
             "popularity": torch.tensor(lab.popularity, dtype=torch.long),
-            "has_title": torch.tensor(lab.has_title, dtype=torch.float),
+            "has_name": torch.tensor(lab.has_name, dtype=torch.float),
             "has_mood": torch.tensor(lab.has_mood, dtype=torch.float),
             "has_other": torch.tensor(lab.has_other, dtype=torch.float),
         }
@@ -503,7 +503,7 @@ def compute_loss(
     loss = loss + bce(pred["has_runtime_logits"], batch["has_runtime"])
     loss = loss + bce(pred["has_rating_logits"], batch["has_rating"])
     # title is rare (~7%) — upweight presence
-    loss = loss + 2.0 * bce(pred["has_title_logits"], batch["has_title"])
+    loss = loss + 2.0 * bce(pred["has_name_logits"], batch["has_name"])
     loss = loss + bce(pred["has_mood_logits"], batch["has_mood"])
     loss = loss + bce(pred["has_other_logits"], batch["has_other"])
     loss = loss + ce(pred["popularity_logits"], batch["popularity"])
@@ -552,7 +552,7 @@ def decode_batch(pred: dict, genre_thresh: float = 0.5, bin_thresh: float = 0.5)
     has_date = torch.sigmoid(pred["has_date_logits"]) >= bin_thresh
     has_rt = torch.sigmoid(pred["has_runtime_logits"]) >= bin_thresh
     has_rat = torch.sigmoid(pred["has_rating_logits"]) >= bin_thresh
-    has_title = torch.sigmoid(pred["has_title_logits"]) >= bin_thresh
+    has_name = torch.sigmoid(pred["has_name_logits"]) >= bin_thresh
     has_mood = torch.sigmoid(pred["has_mood_logits"]) >= bin_thresh
     has_other = torch.sigmoid(pred["has_other_logits"]) >= bin_thresh
     pop = pred["popularity_logits"].argmax(dim=-1)
@@ -570,7 +570,7 @@ def decode_batch(pred: dict, genre_thresh: float = 0.5, bin_thresh: float = 0.5)
             "has_runtime": bool(has_rt[i].item()),
             "has_rating": bool(has_rat[i].item()),
             "popularity": POP_NAMES[int(pop[i].item())],
-            "has_title": bool(has_title[i].item()),
+            "has_name": bool(has_name[i].item()),
             "has_mood": bool(has_mood[i].item()),
             "has_other": bool(has_other[i].item()),
         }
@@ -603,7 +603,7 @@ def evaluate(model, loader, device, genre_pos_weight: torch.Tensor | None = None
         ("has_date", "has_date_logits"),
         ("has_runtime", "has_runtime_logits"),
         ("has_rating", "has_rating_logits"),
-        ("has_title", "has_title_logits"),
+        ("has_name", "has_name_logits"),
         ("has_mood", "has_mood_logits"),
         ("has_other", "has_other_logits"),
     ]
@@ -642,7 +642,7 @@ def evaluate(model, loader, device, genre_pos_weight: torch.Tensor | None = None
                 "has_date": batch["has_date"][i].item() >= 0.5,
                 "has_runtime": batch["has_runtime"][i].item() >= 0.5,
                 "has_rating": batch["has_rating"][i].item() >= 0.5,
-                "has_title": batch["has_title"][i].item() >= 0.5,
+                "has_name": batch["has_name"][i].item() >= 0.5,
                 "has_mood": batch["has_mood"][i].item() >= 0.5,
                 "has_other": batch["has_other"][i].item() >= 0.5,
             }
@@ -695,7 +695,7 @@ def print_metrics(tag: str, m: dict):
     print(f"\n=== {tag} (n={m['n']}) ===")
     print(f"  loss={m['loss']:.4f}")
     print(f"  genre_f1={m['genre_f1']:.3f}  popularity_acc={m['popularity_acc']:.3f}")
-    for k in ("has_date", "has_runtime", "has_rating", "has_title", "has_mood", "has_other"):
+    for k in ("has_date", "has_runtime", "has_rating", "has_name", "has_mood", "has_other"):
         print(f"  {k}_f1={m[f'{k}_f1']:.3f}")
     if m["date_mae_years"] is not None:
         print(f"  date_mae_years={m['date_mae_years']:.1f}")
@@ -724,7 +724,7 @@ def data_stats(labels: list[FacetLabel]):
             "date": sum(1 for l in labels if l.has_date) / len(labels),
             "runtime": sum(1 for l in labels if l.has_runtime) / len(labels),
             "rating": sum(1 for l in labels if l.has_rating) / len(labels),
-            "title": sum(1 for l in labels if l.has_title) / len(labels),
+            "name": sum(1 for l in labels if l.has_name) / len(labels),
             "mood": sum(1 for l in labels if l.has_mood) / len(labels),
             "other": sum(1 for l in labels if l.has_other) / len(labels),
             "pop_niche": sum(1 for l in labels if l.popularity == POP_NICHE_I) / len(labels),
@@ -793,7 +793,7 @@ def train_one(model_key: str, labels: list[FacetLabel], args) -> Path:
         # composite score: genre f1 + mean binary f1 + pop acc
         bin_f1s = [
             metrics[f"{k}_f1"]
-            for k in ("has_date", "has_runtime", "has_rating", "has_title", "has_mood", "has_other")
+            for k in ("has_date", "has_runtime", "has_rating", "has_name", "has_mood", "has_other")
         ]
         score = metrics["genre_f1"] + metrics["popularity_acc"] + sum(bin_f1s) / len(bin_f1s)
         if score > best_score:

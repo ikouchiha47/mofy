@@ -92,7 +92,6 @@ empty overview. Remaining gap is almost entirely pre-2020 TV series
 | Stanford "Large Movie Review Dataset" (`imdb_reviews` on TFDS / Kaggle `IMDB Dataset.csv`) | Sentiment-labeled user reviews, not plot summaries - and critically, **no title/IMDb ID column at all**. Reviews are deliberately anonymized per movie for the sentiment-classification task they were built for; there's nothing to join against `tconst`. |
 | `Pablinho/movies-dataset` (Hugging Face, ~9,848 rows) | TMDB-sourced but **no stable ID** (just `Title`/`Release_Date`) - would require fuzzy title+year matching, unreliable for a data pipeline. Also small and skews toward popular 2020s titles. |
 | DBpedia (SPARQL, `dbo:imdbId` + `rdfs:comment`) | Has real IMDb-ID linkage in principle, but the public endpoint hit a genuine `503 "License has expired"` error during evaluation - a real, apparently-recurring reliability problem, not a one-off. An ID lookup also resolved to the wrong film's redirect page on one test. Snapshot-based (periodic Wikipedia dumps), not live, so recency is also questionable. |
-| Scraping imdb.com directly | IMDb's own ToS explicitly prohibits scraping the site; the non-commercial dataset (already in use) is the sanctioned path and deliberately excludes plot text - not an oversight, a licensing boundary. Declined on that basis, not attempted. |
 
 TMDB (`03_enrich_tmdb_gaps.py`) and Kaggle's static export remain the two
 real, legitimate sources - see above.

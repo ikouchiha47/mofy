@@ -8,6 +8,15 @@ dependencies = [
     "httpx>=0.27",
     "sentence-transformers>=3.0",
     "tqdm>=4.66",
+    "sqlite-vec>=0.1.6",
+    "dspy>=3.3.0",
+    "websockets>=17.0.1",
+    "transformers>=5.14.1",
+    "datasets>=5.0.1",
+    "torch>=2.13.0",
+    "accelerate>=1.1.0",
+    "torchao>=0.18.0",
+    "modal>=1.5.4",
 ]
 
 [tool.uv]

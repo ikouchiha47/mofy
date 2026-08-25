@@ -20,10 +20,25 @@ Output: ml/data/catalog.db
     the Android app's own library_search table (see LibrarySearchEntity.kt).
 """
 
+import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 import polars as pl
+
+_MULTI_SPACE = re.compile(r"[ \t\xa0​‌‍  　]+")
+
+
+def clean_text(s: str | None) -> str:
+    if not s:
+        return ""
+    # unicode normalize: collapse composed chars, then strip unicode categories
+    # that are invisible (Cf = format chars like zero-width joiners)
+    s = unicodedata.normalize("NFKC", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Cf")
+    s = _MULTI_SPACE.sub(" ", s)
+    return s.strip()
 
 DATA_DIR = "ml/data"
 
@@ -42,6 +57,10 @@ def main() -> None:
             .otherwise(pl.col("overview"))
             .alias("overview"),
         ).drop("overview_tmdb")
+        # clean after merge so both sources go through the same normalization
+        titles = titles.with_columns(
+            pl.col("overview").map_elements(clean_text, return_dtype=pl.String)
+        )
         covered = titles.filter(pl.col("overview") != "").height
         print(f"merged TMDB checkpoint - {covered} / {titles.height} titles now have overview text")
 
@@ -52,6 +71,7 @@ def main() -> None:
             title TEXT NOT NULL,
             titleType TEXT NOT NULL,
             startYear INTEGER,
+            runtimeMinutes INTEGER,
             genres TEXT,
             averageRating REAL,
             numVotes INTEGER,
@@ -66,22 +86,23 @@ def main() -> None:
     for row in titles.iter_rows(named=True):
         con.execute(
             """INSERT OR REPLACE INTO catalog_items
-               (tconst, title, titleType, startYear, genres, averageRating, numVotes, overview)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (tconst, title, titleType, startYear, runtimeMinutes, genres, averageRating, numVotes, overview)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 row["tconst"],
                 row["primaryTitle"],
                 row["titleType"],
                 row["startYear"],
+                row.get("runtimeMinutes"),
                 row["genres"],
                 row["averageRating"],
                 row["numVotes"],
-                row["overview"],
+                clean_text(row["overview"]),
             ),
         )
         con.execute(
             "INSERT INTO catalog_fts (tconst, title, overview) VALUES (?, ?, ?)",
-            (row["tconst"], row["primaryTitle"], row["overview"]),
+            (row["tconst"], row["primaryTitle"], clean_text(row["overview"])),
         )
 
     con.commit()

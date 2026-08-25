@@ -16,6 +16,7 @@ Output: ml/data/tmdb_checkpoint.db (table: tmdb_checkpoint(tconst, overview, fet
 
 import argparse
 import asyncio
+import json
 import os
 import sqlite3
 import time
@@ -38,9 +39,19 @@ def open_checkpoint_db() -> sqlite3.Connection:
         """CREATE TABLE IF NOT EXISTS tmdb_checkpoint (
             tconst TEXT PRIMARY KEY,
             overview TEXT NOT NULL,
+            adult INTEGER,
+            raw_response TEXT,
             fetched_at INTEGER NOT NULL
         )""",
     )
+    # Additive migration for checkpoint DBs from before adult/raw_response
+    # existed - CREATE TABLE IF NOT EXISTS above is a no-op against an
+    # already-existing table, so old columns don't appear without this.
+    existing_cols = {row[1] for row in con.execute("PRAGMA table_info(tmdb_checkpoint)")}
+    if "adult" not in existing_cols:
+        con.execute("ALTER TABLE tmdb_checkpoint ADD COLUMN adult INTEGER")
+    if "raw_response" not in existing_cols:
+        con.execute("ALTER TABLE tmdb_checkpoint ADD COLUMN raw_response TEXT")
     con.commit()
     return con
 
@@ -73,13 +84,28 @@ async def fetch_one(client: httpx.AsyncClient, tconst: str, sem: asyncio.Semapho
             resp.raise_for_status()
             data = resp.json()
             results = data.get("movie_results") or data.get("tv_results") or []
-            overview = results[0].get("overview", "") if results else ""
-            return {"tconst": tconst, "overview": overview}
+            result = results[0] if results else {}
+            # Save the raw response verbatim (not just the overview we
+            # currently need) so a future field we didn't think to extract
+            # yet - genre_ids, original_language, etc. - doesn't require
+            # re-hitting the API for titles already fetched once. popularity
+            # deliberately not extracted as its own column: it's a
+            # time-sensitive, daily-recalculated TMDB score (confirmed via
+            # their docs, not assumed), so a value captured once during
+            # catalog build goes stale in a way adult/genre/overview don't -
+            # not worth a static column, though it's still in raw_response
+            # if ever needed as a historical snapshot.
+            return {
+                "tconst": tconst,
+                "overview": result.get("overview", ""),
+                "adult": result.get("adult"),
+                "raw_response": json.dumps(data),
+            }
 
         # Every retry failed - checkpoint as empty so the title isn't
         # silently dropped from "remaining" on the next resumed run either;
         # a later pass can specifically re-target empty-but-checkpointed rows.
-        return {"tconst": tconst, "overview": ""}
+        return {"tconst": tconst, "overview": "", "adult": None, "raw_response": None}
 
 
 async def run(tconsts: list[str], con: sqlite3.Connection) -> None:
@@ -89,8 +115,15 @@ async def run(tconsts: list[str], con: sqlite3.Connection) -> None:
         for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
             result = await coro
             con.execute(
-                "INSERT OR REPLACE INTO tmdb_checkpoint (tconst, overview, fetched_at) VALUES (?, ?, ?)",
-                (result["tconst"], result["overview"], int(time.time())),
+                """INSERT OR REPLACE INTO tmdb_checkpoint
+                   (tconst, overview, adult, raw_response, fetched_at) VALUES (?, ?, ?, ?, ?)""",
+                (
+                    result["tconst"],
+                    result["overview"],
+                    result["adult"],
+                    result["raw_response"],
+                    int(time.time()),
+                ),
             )
             con.commit()
 
@@ -119,9 +152,26 @@ def main() -> None:
     args = parser.parse_args()
 
     catalog = pl.read_parquet(f"{DATA_DIR}/catalog_titles.parquet")
-    scope = catalog.filter(
-        (pl.col("overview") == "") & (pl.col("startYear") >= args.year_min),
+    # "Needs enrichment" isn't just a literal empty string - Kaggle's source
+    # data has several degenerate placeholder patterns that pass an == ""
+    # check while carrying no real plot content: whitespace-only, the title
+    # copied verbatim into the overview field, and a literal "No overview
+    # found." sentinel string. A flat word-count floor also catches thin
+    # (but non-degenerate) entries - 20 words was picked as the boundary
+    # after checking real TMDB data against several samples in this range;
+    # titles above it were already accurate on re-check, so re-fetching them
+    # wastes API calls and can even regress good data with a shorter current
+    # TMDB synopsis (confirmed empirically, see chat history around this
+    # commit for specific examples).
+    overview_stripped = pl.col("overview").str.strip_chars()
+    title_stripped = pl.col("primaryTitle").str.strip_chars()
+    is_degenerate = (
+        (overview_stripped == "")
+        | (overview_stripped == title_stripped)
+        | (overview_stripped == "No overview found.")
+        | (pl.col("overview").str.split(" ").list.len() < 20)
     )
+    scope = catalog.filter(is_degenerate & (pl.col("startYear") >= args.year_min))
     if args.year_max is not None:
         scope = scope.filter(pl.col("startYear") <= args.year_max)
     if args.type is not None:

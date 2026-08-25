@@ -41,7 +41,11 @@ def main() -> None:
         pl.col("numVotes") >= MIN_VOTES,
     )
 
-    filtered = basics.join(ratings, on="tconst", how="inner").collect()
+    filtered = (
+        basics.select(["tconst", "titleType", "primaryTitle", "originalTitle",
+                        "startYear", "runtimeMinutes", "genres"])
+        .join(ratings, on="tconst", how="inner")
+    ).collect()
     print(f"{filtered.height} titles after filtering")
     filtered.write_parquet(f"{DATA_DIR}/filtered_titles.parquet")
 

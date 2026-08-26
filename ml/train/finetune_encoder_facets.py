@@ -45,6 +45,7 @@ DATA_FILES = [
     "data/scaled_examples_batch_3.jsonl",
     "data/scaled_examples_batch_4.jsonl",
     "data/grounded_queries.jsonl",
+    "data/negation_genre_examples.jsonl",
 ]
 
 # Canonical genres from catalog.db (order is stable label index).
@@ -482,6 +483,14 @@ class FacetDataset(Dataset):
 # ---------------------------------------------------------------------------
 
 
+def _focal_bce(logits: torch.Tensor, targets: torch.Tensor, gamma: float = 2.0, pos_weight=None) -> torch.Tensor:
+    """Binary focal loss: down-weights easy examples so the model sharpens confident genres."""
+    bce_fn = nn.BCEWithLogitsLoss(reduction="none", pos_weight=pos_weight)
+    bce = bce_fn(logits, targets)
+    p_t = torch.where(targets == 1, torch.sigmoid(logits), 1 - torch.sigmoid(logits))
+    return ((1 - p_t) ** gamma * bce).mean()
+
+
 def compute_loss(
     pred: dict,
     batch: dict,
@@ -489,7 +498,6 @@ def compute_loss(
     genre_pos_weight: torch.Tensor | None = None,
     date_weight: float = 3.0,
 ) -> torch.Tensor:
-    # per-genre pos_weight counters Drama collapse on rare genres
     if genre_pos_weight is not None:
         bce_genre = nn.BCEWithLogitsLoss(pos_weight=genre_pos_weight.to(device))
     else:
@@ -546,8 +554,48 @@ def genre_pos_weights(labels: list[FacetLabel]) -> torch.Tensor:
     return w
 
 
+DEFAULT_GENRE_THRESH = 0.5
+
+_NEGATION_TRIGGERS = {"no", "without", "not"}
+_CONJUNCTIONS = {"or", "and"}
+
+
+def _extract_negated_genres(query: str, incl_genres: list[str]) -> list[str]:
+    """From the model's included genres, move any that appear after a negation token to excluded."""
+    if not incl_genres:
+        return []
+    candidates = {g.lower(): g for g in incl_genres}
+    tokens = query.lower().split()
+    negated_tokens: set[str] = set()
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i].rstrip(".,!?")
+        if tok in _NEGATION_TRIGGERS:
+            j = i + 1
+            while j < len(tokens):
+                t = tokens[j].rstrip(".,!?")
+                if t in _CONJUNCTIONS:
+                    j += 1
+                    continue
+                if t in candidates:
+                    negated_tokens.add(t)
+                    j += 1
+                else:
+                    break
+            i = j
+        else:
+            i += 1
+    return [candidates[t] for t in negated_tokens]
+
+
 @torch.no_grad()
-def decode_batch(pred: dict, genre_thresh: float = 0.5, bin_thresh: float = 0.5) -> list[dict]:
+def decode_batch(
+    queries: list[str] | None,
+    pred: dict,
+    genre_thresh: float = DEFAULT_GENRE_THRESH,
+    bin_thresh: float = 0.5,
+) -> list[dict]:
+    """Decode head logits → facet dicts. excluded_genre via rule-based extraction on raw query."""
     genre_prob = torch.sigmoid(pred["genre_logits"])
     has_date = torch.sigmoid(pred["has_date_logits"]) >= bin_thresh
     has_rt = torch.sigmoid(pred["has_runtime_logits"]) >= bin_thresh
@@ -563,9 +611,14 @@ def decode_batch(pred: dict, genre_thresh: float = 0.5, bin_thresh: float = 0.5)
     bsz = genre_prob.size(0)
     results = []
     for i in range(bsz):
-        genres = [GENRES[j] for j in range(N_GENRES) if genre_prob[i, j] >= genre_thresh]
+        q = queries[i] if queries else ""
+        all_genres = [GENRES[j] for j in range(N_GENRES) if genre_prob[i, j] >= genre_thresh]
+        excl_genres = _extract_negated_genres(q, all_genres)
+        excl_set = set(excl_genres)
+        genres = [g for g in all_genres if g not in excl_set]
         d: dict = {
             "genre": genres,
+            "excluded_genre": excl_genres,
             "has_date": bool(has_date[i].item()),
             "has_runtime": bool(has_rt[i].item()),
             "has_rating": bool(has_rat[i].item()),
@@ -620,22 +673,18 @@ def evaluate(model, loader, device, genre_pos_weight: torch.Tensor | None = None
         batch = {k: v.to(device) for k, v in batch.items()}
         pred = model(batch["input_ids"], batch["attention_mask"])
         loss_sum += compute_loss(pred, batch, device, genre_pos_weight=genre_pos_weight).item()
-        decoded = decode_batch(pred)
+        decoded = decode_batch(None, pred, genre_thresh=DEFAULT_GENRE_THRESH)
         bsz = batch["input_ids"].size(0)
         n += bsz
 
         gold_genre = batch["genre"].cpu()
         for i in range(bsz):
-            # genre multi-label micro
             for j in range(N_GENRES):
                 g = gold_genre[i, j].item() >= 0.5
-                p = j < len(GENRES) and GENRES[j] in decoded[i]["genre"]
-                if g and p:
-                    genre_tp += 1
-                elif p and not g:
-                    genre_fp += 1
-                elif g and not p:
-                    genre_fn += 1
+                p = GENRES[j] in decoded[i]["genre"]
+                if g and p:       genre_tp += 1
+                elif p and not g: genre_fp += 1
+                elif g and not p: genre_fn += 1
 
             # binary
             gold_bin = {
@@ -830,7 +879,7 @@ def demo(checkpoint: Path, queries: list[str]):
     )
     tok = AutoTokenizer.from_pretrained(checkpoint)
     model = MultiHeadFacetModel(ckpt["hf"]).to(device)
-    model.load_state_dict(ckpt["state_dict"])
+    model.load_state_dict(ckpt["state_dict"], strict=False)
     model.eval()
 
     print(f"\n=== demo ({checkpoint}) ===")
@@ -838,19 +887,34 @@ def demo(checkpoint: Path, queries: list[str]):
         enc = tok(q, return_tensors="pt", truncation=True, max_length=64, padding=True)
         enc = {k: v.to(device) for k, v in enc.items()}
         pred = model(enc["input_ids"], enc["attention_mask"])
-        out = decode_batch(pred)[0]
+        out = decode_batch([q], pred, genre_thresh=DEFAULT_GENRE_THRESH)[0]
         print(f"\n  Q: {q}")
-        print(f"  → {json.dumps(out, ensure_ascii=False)}")
+        incl = out.get("genre", [])
+        excl = out.get("excluded_genre", [])
+        rest = {k: v for k, v in out.items() if k not in ("genre", "excluded_genre")}
+        print(f"     genre={incl}  excluded={excl}")
+        print(f"     {json.dumps(rest, ensure_ascii=False)}")
 
 
 DEMO_QUERIES = [
+    # existing
     "dark psychological thriller from the 80s under 2 hours",
-    "something chill for a Friday night",
     "critically acclaimed sci-fi under 2 hours",
     "nostalgic 90s comedy hidden gem",
-    "download inception 2010 1080p",
-    "good 90s war dramas max 2 hours long",
     "mind-bending sci-fi movies high rated",
+    # name detection
+    "movies with Zhang Ziyi",
+    "films directed by derek jarman 1991",
+    "something like Christopher Nolan",
+    "Joan Chen drama 2004",
+    # excluded genre
+    "good 2010s drama no comedy or animation",
+    "thriller without horror 90s",
+    "drama not for kids 2000s",
+    "2010s drama no action or war",
+    # both heads
+    "2000s romance but no comedy",
+    "mystery thriller without comedy or romance 90s",
 ]
 
 

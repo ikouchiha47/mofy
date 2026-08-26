@@ -158,3 +158,79 @@ class TestHasRuntime:
     def test_no_runtime_without_mention(self, model_and_tok):
         out = _run(model_and_tok, ["nostalgic 90s comedy hidden gem"])[0]
         assert out["has_runtime"] is False
+
+
+# ── has_rating head ───────────────────────────────────────────────────────────
+
+class TestHasRating:
+    def test_must_watch(self, model_and_tok):
+        out = _run(model_and_tok, ["what are some must-watch dramas from the 90s"])[0]
+        assert out["has_rating"] is True
+
+    def test_top_films(self, model_and_tok):
+        out = _run(model_and_tok, ["show me top sci-fi films from the 2010s"])[0]
+        assert out["has_rating"] is True
+
+    def test_no_rating_in_plain_query(self, model_and_tok):
+        out = _run(model_and_tok, ["2000s drama nothing fancy"])[0]
+        assert out["has_rating"] is False
+
+
+# ── has_mood head ─────────────────────────────────────────────────────────────
+
+class TestHasMood:
+    def test_cozy(self, model_and_tok):
+        out = _run(model_and_tok, ["something cozy to watch on a rainy day"])[0]
+        assert out["has_mood"] is True
+
+    def test_uplifting(self, model_and_tok):
+        out = _run(model_and_tok, ["uplifting sports movie from the 2000s"])[0]
+        assert out["has_mood"] is True
+
+    def test_dark_brooding(self, model_and_tok):
+        out = _run(model_and_tok, ["dark brooding thriller 80s"])[0]
+        assert out["has_mood"] is True
+
+    def test_no_mood_plain(self, model_and_tok):
+        out = _run(model_and_tok, ["2010s drama"])[0]
+        assert out["has_mood"] is False
+
+
+# ── popularity head ───────────────────────────────────────────────────────────
+
+class TestPopularity:
+    def test_hidden_gem(self, model_and_tok):
+        out = _run(model_and_tok, ["hidden gem romance from the 90s nobody talks about"])[0]
+        assert out["popularity"] == "niche"
+
+    def test_under_the_radar(self, model_and_tok):
+        out = _run(model_and_tok, ["under the radar sci-fi from 2000s"])[0]
+        assert out["popularity"] == "niche"
+
+    def test_blockbuster(self, model_and_tok):
+        out = _run(model_and_tok, ["big budget action blockbuster 2010s"])[0]
+        assert out["popularity"] == "mainstream"
+
+    def test_mainstream(self, model_and_tok):
+        out = _run(model_and_tok, ["something mainstream 2015 drama"])[0]
+        assert out["popularity"] == "mainstream"
+
+    def test_no_qualifier(self, model_and_tok):
+        out = _run(model_and_tok, ["2010s drama"])[0]
+        assert out["popularity"] == "none"
+
+
+# ── has_other head ────────────────────────────────────────────────────────────
+
+class TestHasOther:
+    def test_french_new_wave(self, model_and_tok):
+        out = _run(model_and_tok, ["french new wave drama 1960s"])[0]
+        assert out["has_other"] is True
+
+    def test_set_in_tokyo(self, model_and_tok):
+        out = _run(model_and_tok, ["drama set in tokyo 2000s"])[0]
+        assert out["has_other"] is True
+
+    def test_no_other_in_generic(self, model_and_tok):
+        out = _run(model_and_tok, ["90s comedy"])[0]
+        assert out["has_other"] is False

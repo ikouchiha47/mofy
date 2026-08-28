@@ -38,6 +38,9 @@ interface LibraryDao {
     @Query("SELECT * FROM library_items")
     suspend fun getAllOnce(): List<LibraryItem>
 
+    @Query("SELECT * FROM library_items WHERE embeddingBlob IS NOT NULL")
+    suspend fun getAllWithEmbedding(): List<LibraryItem>
+
     @Query("SELECT * FROM library_items WHERE id = :id")
     suspend fun getById(id: String): LibraryItem?
 

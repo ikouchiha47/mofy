@@ -147,6 +147,11 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
+    // On-device embedding for semantic search (Phase 09).
+    // Raw TFLite Interpreter for litert-community/embeddinggemma-300m.
+    // SentencePiece tokenization is a TODO - embed() returns null until then.
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Architecture rules (Konsist works on Kotlin source/PSI, not bytecode -

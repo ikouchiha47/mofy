@@ -20,7 +20,9 @@ import kotlinx.coroutines.Dispatchers
         GenreEntity::class,
         TorrentSiteEntity::class,
     ],
-    version = 9,
+    // 11: library_items gains embeddingBlob (BLOB nullable) for on-device
+    // semantic search over user-added titles not in catalog.db.
+    version = 11,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

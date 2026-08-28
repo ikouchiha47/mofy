@@ -78,8 +78,14 @@ import com.mofy.app.watchtogether.WatchTogetherSession
 import com.mofy.app.watchtogether.signaling.SignalingSettings
 
 class MainActivity : ComponentActivity() {
+    // mofy://wt/{roomKey} - RoomCode.toDeepLink / QR payload. Held here
+    // (not just read once) since onNewIntent fires for taps while the app
+    // is already running (singleTask), separately from cold-start onCreate.
+    private var pendingDeepLink by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingDeepLink = intent?.data?.toString()
         // App is forced dark regardless of system theme (see ADR 0003), so
         // status/nav bar icons must always be light, not auto-detected.
         enableEdgeToEdge(
@@ -88,9 +94,18 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             MofyTheme {
-                MofyApp()
+                MofyApp(
+                    pendingDeepLink = pendingDeepLink,
+                    onDeepLinkConsumed = { pendingDeepLink = null },
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingDeepLink = intent.data?.toString()
     }
 }
 
@@ -101,15 +116,30 @@ private const val ROUTE_DETAIL = "detail/{id}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MofyApp() {
+private fun MofyApp(
+    pendingDeepLink: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
     // remember is required here - MofyApp recomposes on every navigation
     // (currentRoute changes), and without it this would silently reset the
     // selected category/extracted title on every screen transition.
     val browseSessionViewModel = remember { BrowseSessionViewModel() }
     val watchTogetherViewModel = remember { WatchTogetherSessionViewModel() }
+    var deepLinkedRoomKey by remember { mutableStateOf<String?>(null) }
+    var deepLinkedSignalingUrl by remember { mutableStateOf<String?>(null) }
     var showJoinSheet by remember { mutableStateOf(false) }
     var joinPickedItem by remember { mutableStateOf<com.mofy.app.data.library.LibraryItem?>(null) }
+
+    androidx.compose.runtime.LaunchedEffect(pendingDeepLink) {
+        val parsed = pendingDeepLink?.let { com.mofy.app.watchtogether.RoomCode.parseDeepLink(it) }
+        if (parsed != null) {
+            deepLinkedRoomKey = parsed.roomKey
+            deepLinkedSignalingUrl = parsed.signalingUrl
+            showJoinSheet = true
+        }
+        onDeepLinkConsumed()
+    }
 
     val context = LocalContext.current
     val database = remember { AppDatabase.get(context) }
@@ -117,12 +147,14 @@ private fun MofyApp() {
     val siteRepository = remember { SiteRepository(dao = database.siteDao()) }
     // CatalogDatabase.get() copies a 39MB asset out on first run - real file
     // I/O, so it can't run inline on the composition/main thread.
+    val onDeviceEmbedder = remember { com.mofy.app.search.OnDeviceEmbedder(context) }
+
     var catalogRepository by remember { androidx.compose.runtime.mutableStateOf<com.mofy.app.data.catalog.CatalogRepository?>(null) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         val db = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             com.mofy.app.data.catalog.CatalogDatabase.get(context)
         }
-        catalogRepository = com.mofy.app.data.catalog.CatalogRepository(db)
+        catalogRepository = com.mofy.app.data.catalog.CatalogRepository(db, database.libraryDao())
     }
     val coroutineScope = rememberCoroutineScope()
 
@@ -183,14 +215,6 @@ private fun MofyApp() {
                 )
                 PushedRoute.IMPORT_LINK -> TopAppBar(
                     title = { Text("Import") },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                )
-                PushedRoute.ADD_MANUALLY -> TopAppBar(
-                    title = { Text("Add manually") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -311,6 +335,7 @@ private fun MofyApp() {
                 com.mofy.app.ui.discover.DiscoverScreen(
                     contentPadding = contentPadding,
                     catalogRepository = catalogRepository,
+                    embedder = onDeviceEmbedder,
                     onAdd = { catalogItem ->
                         // Catalog items are IMDb-only, never have a tmdbId - always
                         // resolve via text search + user confirmation (radio-select,
@@ -348,7 +373,19 @@ private fun MofyApp() {
                                         )
                                     }
                                 } else {
-                                    database.libraryDao().saveConfirmedMatch(matched.toLibraryItem(LibrarySource.DISCOVERED))
+                                    val item = matched.toLibraryItem(LibrarySource.DISCOVERED)
+                                    database.libraryDao().saveConfirmedMatch(item)
+                                    // Background: generate embedding so this title is
+                                    // findable via semantic search even if it's not in catalog.db.
+                                    val ready = onDeviceEmbedder.init()
+                                    if (ready) {
+                                        val text = "${item.title} ${item.overview}".trim()
+                                        val vec = onDeviceEmbedder.embed(text)
+                                        if (vec != null) {
+                                            val blob = with(onDeviceEmbedder) { vec.toEmbeddingBlob() }
+                                            database.libraryDao().updateRaw(item.copy(embeddingBlob = blob))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -363,35 +400,8 @@ private fun MofyApp() {
                     libraryDao = database.libraryDao(),
                     genreRepository = genreRepository,
                     onImportClick = { navController.navigate(PushedRoute.IMPORT_LINK) },
-                    onAddManuallyClick = { navController.navigate(PushedRoute.ADD_MANUALLY) },
+                    onAddManuallyClick = { navController.navigate(PushedRoute.MANUAL_ENTRY_FORM) },
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
-                )
-            }
-            composable(PushedRoute.ADD_MANUALLY) {
-                var addManuallyType by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(com.mofy.app.data.tmdb.MediaType.MOVIE)
-                }
-                ConfirmMatchScreen(
-                    contentPadding = contentPadding,
-                    extractedTitle = "",
-                    mediaType = addManuallyType,
-                    onMediaTypeChange = { addManuallyType = it },
-                    showDownloadAction = false,
-                    autoSearch = false,
-                    allowMultiSelect = false,
-                    onManualEntry = {
-                        navController.navigate(PushedRoute.MANUAL_ENTRY_FORM) {
-                            popUpTo(PushedRoute.ADD_MANUALLY) { inclusive = true }
-                        }
-                    },
-                    onConfirm = {},
-                    onSaveToLibrary = { results ->
-                        coroutineScope.launch {
-                            results.forEach { database.libraryDao().saveConfirmedMatch(it.toLibraryItem(LibrarySource.MANUAL)) }
-                        }
-                        android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
-                        navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
-                    },
                 )
             }
             composable(PushedRoute.MANUAL_ENTRY_FORM) {
@@ -544,55 +554,87 @@ private fun MofyApp() {
                 val title = java.net.URLDecoder.decode(encodedTitle, "UTF-8")
                 val encodedUri = backStack.arguments?.getString("uri") ?: ""
                 val importUri = java.net.URLDecoder.decode(encodedUri, "UTF-8")
-                var importMediaType by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(com.mofy.app.data.tmdb.MediaType.MOVIE)
-                }
-                ConfirmMatchScreen(
-                    contentPadding = contentPadding,
-                    extractedTitle = title,
-                    // No site/category context for a locally-picked file -
-                    // user picks it via the segmented control (onMediaTypeChange).
-                    mediaType = importMediaType,
-                    onMediaTypeChange = { importMediaType = it },
-                    showDownloadAction = false,
-                    // Filename-derived guesses are shaky - let the user fix
-                    // the title before spending a TMDB round-trip on it.
-                    autoSearch = false,
-                    // A picked file can only unambiguously link to one saved
-                    // item - reuses the radio (magnetMatchId) as a plain
-                    // single-select instead of the checkbox multi-select.
-                    allowMultiSelect = false,
-                    onConfirm = {},
-                    onSaveToLibrary = { results ->
-                        coroutineScope.launch {
-                            results.forEach { result ->
-                                val libraryItem = result.toLibraryItem(LibrarySource.IMPORTED)
-                                database.libraryDao().saveConfirmedMatch(libraryItem)
-                                val saved = database.libraryDao().getByTmdbMatch(
-                                    libraryItem.tmdbId!!,
-                                    libraryItem.mediaType!!,
-                                ) ?: libraryItem
-                                database.libraryDao().addAndActivateLink(
-                                    com.mofy.app.data.library.LibraryLink(
-                                        libraryItemKey = saved.id,
-                                        label = null,
-                                        movieUri = importUri,
-                                        subtitleUri = null,
-                                        subtitle2Uri = null,
-                                        isActive = false,
-                                        linkedAtEpochMillis = System.currentTimeMillis(),
-                                    ),
-                                )
+                var importMediaType by remember { mutableStateOf(com.mofy.app.data.tmdb.MediaType.MOVIE) }
+                var showManualEntry by remember { mutableStateOf(false) }
+                if (showManualEntry) {
+                    com.mofy.app.ui.library.ManualEntryScreen(
+                        contentPadding = contentPadding,
+                        initialTitle = title,
+                        initialFileUrl = importUri,
+                        onSave = { libraryItem, fileUrl ->
+                            coroutineScope.launch {
+                                database.libraryDao().upsert(libraryItem)
+                                if (fileUrl != null) {
+                                    database.libraryDao().addAndActivateLink(
+                                        LibraryLink(
+                                            libraryItemKey = libraryItem.id,
+                                            label = null,
+                                            movieUri = fileUrl,
+                                            subtitleUri = null,
+                                            subtitle2Uri = null,
+                                            isActive = false,
+                                            linkedAtEpochMillis = System.currentTimeMillis(),
+                                        ),
+                                    )
+                                }
                             }
-                        }
-                        android.widget.Toast.makeText(
-                            context,
-                            if (results.size == 1) "Saved to library" else "Saved ${results.size} to library",
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
-                        navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
-                    },
-                )
+                            android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
+                            navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
+                        },
+                    )
+                } else {
+                    ConfirmMatchScreen(
+                        contentPadding = contentPadding,
+                        extractedTitle = title,
+                        // No site/category context for a locally-picked file -
+                        // user picks it via the segmented control (onMediaTypeChange).
+                        mediaType = importMediaType,
+                        onMediaTypeChange = { importMediaType = it },
+                        showDownloadAction = false,
+                        // Filename-derived guesses are shaky - let the user fix
+                        // the title before spending a TMDB round-trip on it.
+                        autoSearch = false,
+                        // A picked file can only unambiguously link to one saved
+                        // item - reuses the radio (magnetMatchId) as a plain
+                        // single-select instead of the checkbox multi-select.
+                        allowMultiSelect = false,
+                        // Skips the TMDB round-trip when the title's already
+                        // known not to be there - goes straight to manual
+                        // entry with the guessed title + picked file's URI
+                        // carried over, not retyped.
+                        onAddManually = { showManualEntry = true },
+                        onConfirm = {},
+                        onSaveToLibrary = { results ->
+                            coroutineScope.launch {
+                                results.forEach { result ->
+                                    val libraryItem = result.toLibraryItem(LibrarySource.IMPORTED)
+                                    database.libraryDao().saveConfirmedMatch(libraryItem)
+                                    val saved = database.libraryDao().getByTmdbMatch(
+                                        libraryItem.tmdbId!!,
+                                        libraryItem.mediaType!!,
+                                    ) ?: libraryItem
+                                    database.libraryDao().addAndActivateLink(
+                                        LibraryLink(
+                                            libraryItemKey = saved.id,
+                                            label = null,
+                                            movieUri = importUri,
+                                            subtitleUri = null,
+                                            subtitle2Uri = null,
+                                            isActive = false,
+                                            linkedAtEpochMillis = System.currentTimeMillis(),
+                                        ),
+                                    )
+                                }
+                            }
+                            android.widget.Toast.makeText(
+                                context,
+                                if (results.size == 1) "Saved to library" else "Saved ${results.size} to library",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
+                        },
+                    )
+                }
             }
             composable(ROUTE_DETAIL) { backStack ->
                 val id = backStack.arguments?.getString("id") ?: ""
@@ -714,22 +756,36 @@ private fun MofyApp() {
                 if (resolvedItem == null) {
                     PlaceholderScreen(contentPadding = contentPadding, note = "Loading…")
                 } else {
+                    // host() does a synchronous signaling connect (up to 5s,
+                    // see OkHttpSignalingChannel) - a failure there must not
+                    // crash the whole composition, same "error, not crash"
+                    // rule as guest join.
+                    var hostError by remember(resolvedItem.id) { mutableStateOf<String?>(null) }
                     val hostSession = remember(resolvedItem.id) {
-                        WatchTogetherSession.host(
-                            itemHash = ItemHash.of(resolvedItem),
-                            displayName = "You",
-                            player = FakePlayerController(),
-                            appContext = context,
+                        runCatching {
+                            WatchTogetherSession.host(
+                                itemHash = ItemHash.of(resolvedItem),
+                                displayName = "You",
+                                player = FakePlayerController(),
+                                appContext = context,
+                            )
+                        }.onFailure { hostError = it.message ?: "Could not start session" }.getOrNull()
+                    }
+                    if (hostSession == null) {
+                        PlaceholderScreen(
+                            contentPadding = contentPadding,
+                            note = hostError?.let { "Couldn't start Watch Together: $it" } ?: "Couldn't start Watch Together",
+                        )
+                    } else {
+                        androidx.compose.runtime.LaunchedEffect(hostSession) {
+                            watchTogetherViewModel.setActive(hostSession, resolvedItem)
+                        }
+                        CreateRoomScreen(
+                            contentPadding = contentPadding,
+                            session = hostSession,
+                            onStartWatching = { navController.navigate(PushedRoute.WT_SESSION) },
                         )
                     }
-                    androidx.compose.runtime.LaunchedEffect(hostSession) {
-                        watchTogetherViewModel.setActive(hostSession, resolvedItem)
-                    }
-                    CreateRoomScreen(
-                        contentPadding = contentPadding,
-                        session = hostSession,
-                        onStartWatching = { navController.navigate(PushedRoute.WT_SESSION) },
-                    )
                 }
             }
             composable(PushedRoute.WT_SESSION) {
@@ -844,7 +900,13 @@ private fun MofyApp() {
                 displayName = "You",
                 libraryItems = allLibraryItems,
                 onLibraryItemPicked = { joinPickedItem = it },
-                onDismiss = { showJoinSheet = false },
+                initialRoomKey = deepLinkedRoomKey,
+                initialSignalingUrl = deepLinkedSignalingUrl,
+                onDismiss = {
+                    showJoinSheet = false
+                    deepLinkedRoomKey = null
+                    deepLinkedSignalingUrl = null
+                },
                 onScanQr = {
                     showJoinSheet = false
                     navController.navigate(PushedRoute.WT_SCAN)
@@ -853,6 +915,8 @@ private fun MofyApp() {
                     watchTogetherViewModel.setActive(session, joinPickedItem)
                     joinPickedItem = null
                     showJoinSheet = false
+                    deepLinkedRoomKey = null
+                    deepLinkedSignalingUrl = null
                     navController.navigate(PushedRoute.WT_SESSION)
                 },
             )

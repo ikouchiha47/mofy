@@ -63,8 +63,14 @@ import com.mofy.app.ui.components.FilterSidePanel
 import com.mofy.app.ui.components.SelectableListRow
 import com.mofy.app.ui.components.Tag
 import com.mofy.app.ui.components.TypeSegmentedControl
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.mofy.app.search.FacetDecoder
+import com.mofy.app.search.OnDeviceEmbedder
+import com.mofy.app.search.RuleBasedFacetDecoder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 
 /**
  * Browses the bundled IMDb catalog (ml/data/catalog.db - see ml/README.md)
@@ -82,8 +88,13 @@ import kotlinx.coroutines.flow.emptyFlow
 fun DiscoverScreen(
     contentPadding: PaddingValues,
     catalogRepository: CatalogRepository?,
+    embedder: OnDeviceEmbedder?,
+    facetDecoder: FacetDecoder = remember { RuleBasedFacetDecoder() },
     onAdd: (CatalogItem) -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var selectedType by remember { mutableStateOf<MediaType?>(null) }
     var selectedGenre by remember { mutableStateOf<String?>(null) }
     var selectedSort by remember { mutableStateOf(CatalogSort.MOST_VOTED) }
@@ -96,6 +107,28 @@ fun DiscoverScreen(
         debouncedQuery = queryInput
     }
 
+    // Semantic mode: queries >= 3 chars hit the embedding + RRF pipeline.
+    // Falls back to FTS paging if the embedder is unavailable or init fails.
+    var semanticResults by remember { mutableStateOf<List<CatalogItem>?>(null) }
+    val semanticMode = debouncedQuery.length >= 3
+    LaunchedEffect(debouncedQuery) {
+        if (!semanticMode || catalogRepository == null || embedder == null) {
+            semanticResults = null
+            return@LaunchedEffect
+        }
+        scope.launch {
+            val ready = embedder.init()
+            semanticResults = if (ready) {
+                catalogRepository.semanticSearch(
+                    query = debouncedQuery,
+                    context = context,
+                    embedder = embedder,
+                    facetDecoder = facetDecoder,
+                )
+            } else null
+        }
+    }
+
     val titleTypeFilter = when (selectedType) {
         MediaType.MOVIE -> "movie"
         MediaType.TV -> "tvSeries"
@@ -103,7 +136,8 @@ fun DiscoverScreen(
     }
 
     val pagingFlow = remember(debouncedQuery, titleTypeFilter, selectedGenre, selectedSort, catalogRepository) {
-        catalogRepository?.pagedItems(
+        if (semanticMode) emptyFlow<PagingData<CatalogItem>>()
+        else catalogRepository?.pagedItems(
             query = debouncedQuery,
             titleType = titleTypeFilter,
             genre = selectedGenre,
@@ -145,11 +179,19 @@ fun DiscoverScreen(
                 }
             }
 
-            LazyColumn {
-                items(count = items.itemCount, key = items.itemKey { it.tconst }) { index ->
-                    val item = items[index]
-                    if (item != null) {
+            if (semanticResults != null) {
+                LazyColumn {
+                    items(items = semanticResults!!, key = { it.tconst }) { item ->
                         DiscoverRow(item = item, onAdd = { onAdd(item) })
+                    }
+                }
+            } else {
+                LazyColumn {
+                    items(count = items.itemCount, key = items.itemKey { it.tconst }) { index ->
+                        val item = items[index]
+                        if (item != null) {
+                            DiscoverRow(item = item, onAdd = { onAdd(item) })
+                        }
                     }
                 }
             }

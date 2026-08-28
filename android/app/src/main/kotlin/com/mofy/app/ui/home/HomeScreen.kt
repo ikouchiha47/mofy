@@ -58,12 +58,13 @@ fun HomeScreen(
 ) {
     val libraryItems by (libraryDao?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
     val continueWatching by (watchProgressDao?.observeInProgress() ?: emptyFlow()).collectAsState(initial = emptyList())
+    val posterVersion by (catalogRepository?.posterUpdates ?: emptyFlow()).collectAsState(initial = 0)
 
     var popular by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var newReleases by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var genreSections by remember { mutableStateOf<List<Pair<String, List<CatalogItem>>>>(emptyList()) }
 
-    LaunchedEffect(catalogRepository) {
+    LaunchedEffect(catalogRepository, posterVersion) {
         if (catalogRepository == null) return@LaunchedEffect
         popular = catalogRepository.popularItems(6)
         newReleases = catalogRepository.newReleases(6)

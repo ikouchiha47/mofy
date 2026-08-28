@@ -24,14 +24,14 @@ object TmdbClient {
         chain.proceed(request)
     }
 
-    // Token bucket: 40 requests per 10 seconds
-    private val bucketTokens = AtomicInteger(40)
+    // Token bucket: 20 requests per 10 seconds
+    private val bucketTokens = AtomicInteger(20)
     private val bucketResetAt = AtomicLong(System.currentTimeMillis() + 10_000)
 
     private val rateLimitInterceptor = Interceptor { chain ->
         val now = System.currentTimeMillis()
         if (now >= bucketResetAt.get()) {
-            bucketTokens.set(40)
+            bucketTokens.set(20)
             bucketResetAt.set(now + 10_000)
         }
         if (bucketTokens.decrementAndGet() < 0) {

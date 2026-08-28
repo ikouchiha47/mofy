@@ -49,13 +49,16 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     private val dm by lazy { context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager }
 
+    // DownloadManager requires external storage — it cannot write to internal filesDir.
+    private fun modelDir(): File = context.getExternalFilesDir(null) ?: context.filesDir
+
     suspend fun init(): Boolean = withContext(Dispatchers.IO) {
         if (session != null) return@withContext true
         try {
             val vocabFile = File(context.filesDir, VOCAB_FILE)
             if (!vocabFile.exists()) downloadSmall(VOCAB_URL, vocabFile)
 
-            val modelFile = File(context.filesDir, MODEL_FILE)
+            val modelFile = File(modelDir(), MODEL_FILE)
             if (!modelFile.exists()) {
                 awaitDownload(MODEL_URL, MODEL_FILE, "Mofy smart search model")
             }
@@ -123,7 +126,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
      * If a prior download ID is stored (app was killed mid-download), reuses it.
      */
     private suspend fun awaitDownload(url: String, filename: String, title: String) {
-        val dest = File(context.filesDir, filename)
+        val dest = File(modelDir(), filename)
 
         var dlId = prefs.getLong(PREF_DL_ID, -1L)
 
@@ -132,7 +135,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
                 .setTitle(title)
                 .setDescription("Downloading…")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                .setDestinationUri(Uri.fromFile(dest))
+                .setDestinationInExternalFilesDir(context, null, filename)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
             dlId = dm.enqueue(req)

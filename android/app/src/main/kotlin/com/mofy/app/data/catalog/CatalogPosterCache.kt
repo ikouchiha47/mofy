@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "catalog_poster_cache")
 data class CatalogPosterCache(
@@ -30,6 +31,9 @@ interface CatalogPosterCacheDao {
 
     @Query("SELECT tconst, posterPath FROM catalog_poster_cache WHERE tconst IN (:tconsts) AND posterPath IS NOT NULL")
     suspend fun getPosterPaths(tconsts: List<String>): List<TconstPosterPath>
+
+    @Query("SELECT COUNT(*) FROM catalog_poster_cache WHERE posterPath IS NOT NULL")
+    fun observePosterCount(): Flow<Int>
 }
 
 data class TconstPosterPath(val tconst: String, val posterPath: String)

@@ -58,8 +58,12 @@ class MofyApplication : Application() {
             android.util.Log.d("CatalogPosterBackfill", "starting")
             val catalogDb = CatalogDatabase.get(this)
             val repo = CatalogRepository(catalogDb)
-            val tconsts = (repo.popularItems(6) + repo.newReleases(6))
-                .map { it.tconst }.distinct()
+            val homeGenres = listOf("Action", "Drama", "Comedy", "Thriller", "Sci-Fi", "Horror")
+            val tconsts = (
+                repo.popularItems(6) +
+                repo.newReleases(6) +
+                homeGenres.flatMap { repo.byGenre(it, 6) }
+            ).map { it.tconst }.distinct()
             android.util.Log.d("CatalogPosterBackfill", "tconsts=$tconsts")
             val cacheDao = database.catalogPosterCacheDao()
             val cached = cacheDao.getCachedTconsts(tconsts).toSet()

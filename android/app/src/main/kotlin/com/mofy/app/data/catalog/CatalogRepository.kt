@@ -12,6 +12,7 @@ import com.mofy.app.search.FacetDecoder
 import com.mofy.app.search.OnDeviceEmbedder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
 
@@ -23,6 +24,8 @@ class CatalogRepository(
     private val libraryDao: LibraryDao? = null,
     private val posterCacheDao: CatalogPosterCacheDao? = null,
 ) {
+
+    val posterUpdates: Flow<Int> get() = posterCacheDao?.observePosterCount() ?: emptyFlow()
 
     /** Cursor-paginated stream over catalog.db - see CatalogPagingSource. Empty `query` means browse (no keyword filter). */
     fun pagedItems(

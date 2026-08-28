@@ -19,9 +19,9 @@ private const val TAG = "ModelBasedFacetDecoder"
 private const val MODEL_FILE = "facet_model_fp16.onnx"
 private const val VOCAB_FILE = "facet_vocab.txt"
 private const val MODEL_URL =
-    "https://github.com/ikouchiha47/mofy-models/releases/download/v0.1-facet/facet_model_fp16.onnx"
+    "https://github.com/ikouchiha47/mofy/releases/download/v0.1-facet/facet_model_fp16.onnx"
 private const val VOCAB_URL =
-    "https://github.com/ikouchiha47/mofy-models/releases/download/v0.1-facet/facet_vocab.txt"
+    "https://github.com/ikouchiha47/mofy/releases/download/v0.1-facet/facet_vocab.txt"
 private const val PREFS = "facet_decoder"
 private const val PREF_DL_ID = "model_download_id"
 private const val MAX_SEQ_LEN = 64

@@ -6,6 +6,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import com.mofy.app.data.library.LibraryDao
+import com.mofy.app.data.tmdb.TMDB_IMAGE_BASE_URL
 import com.mofy.app.search.DefaultRrfRanker
 import com.mofy.app.search.FacetDecoder
 import com.mofy.app.search.OnDeviceEmbedder
@@ -20,6 +21,7 @@ private const val SEMANTIC_K = 60
 class CatalogRepository(
     private val db: SQLiteDatabase,
     private val libraryDao: LibraryDao? = null,
+    private val posterCacheDao: CatalogPosterCacheDao? = null,
 ) {
 
     /** Cursor-paginated stream over catalog.db - see CatalogPagingSource. Empty `query` means browse (no keyword filter). */
@@ -90,7 +92,7 @@ class CatalogRepository(
                 "FROM catalog_items WHERE averageRating IS NOT NULL AND numVotes >= 50000 " +
                 "ORDER BY numVotes DESC LIMIT ?",
             arrayOf(limit.toString()),
-        ).use { it.toCatalogItems() }
+        ).use { it.toCatalogItems() }.enrichPosters()
     }
 
     suspend fun newReleases(limit: Int = 20): List<CatalogItem> = withContext(Dispatchers.IO) {
@@ -99,7 +101,7 @@ class CatalogRepository(
                 "FROM catalog_items WHERE startYear >= 2022 AND numVotes >= 5000 " +
                 "ORDER BY startYear DESC, numVotes DESC LIMIT ?",
             arrayOf(limit.toString()),
-        ).use { it.toCatalogItems() }
+        ).use { it.toCatalogItems() }.enrichPosters()
     }
 
     suspend fun byGenre(genre: String, limit: Int = 20): List<CatalogItem> = withContext(Dispatchers.IO) {
@@ -108,7 +110,16 @@ class CatalogRepository(
                 "FROM catalog_items WHERE genres LIKE ? AND numVotes >= 10000 " +
                 "ORDER BY numVotes DESC LIMIT ?",
             arrayOf("%$genre%", limit.toString()),
-        ).use { it.toCatalogItems() }
+        ).use { it.toCatalogItems() }.enrichPosters()
+    }
+
+    private suspend fun List<CatalogItem>.enrichPosters(): List<CatalogItem> {
+        val dao = posterCacheDao ?: return this
+        val tconsts = map { it.tconst }.ifEmpty { return this }
+        val posterMap = dao.getPosterPaths(tconsts).associateBy { it.tconst }
+        return map { item ->
+            posterMap[item.tconst]?.let { item.copy(posterUrl = "$TMDB_IMAGE_BASE_URL${it.posterPath}") } ?: item
+        }
     }
 
     private fun android.database.Cursor.toCatalogItems(): List<CatalogItem> = buildList {

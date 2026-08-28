@@ -74,7 +74,12 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding,
+        contentPadding = PaddingValues(
+            top = contentPadding.calculateTopPadding() + 16.dp,
+            bottom = contentPadding.calculateBottomPadding(),
+            start = 0.dp,
+            end = 0.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         if (continueWatching.isNotEmpty()) {
@@ -107,7 +112,7 @@ fun HomeScreen(
 
         if (popular.isNotEmpty()) {
             item {
-                SectionHeader("Popular Right Now")
+                SectionHeader("All Time Classics")
                 CatalogRow(popular, onCatalogItemClick)
             }
         }
@@ -219,6 +224,14 @@ private fun CatalogCard(item: CatalogItem, onClick: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.BottomStart,
         ) {
+            if (item.posterUrl != null) {
+                AsyncImage(
+                    model = item.posterUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             if (item.averageRating != null) {
                 Text(
                     "★ ${"%.1f".format(item.averageRating)}",

@@ -1,5 +1,7 @@
 package com.mofy.app.data.library
 
+import androidx.room.ColumnInfo
+
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -7,6 +9,20 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+
+data class LibraryPosterInfo(
+    val imdbId: String?,
+    val posterPath: String?,
+    val localPosterUri: String?,
+    val posterSource: String,
+) {
+    val posterUrl: String?
+        get() = when (posterSource) {
+            PosterSource.UPLOADED.name -> localPosterUri
+            PosterSource.TMDB.name -> posterPath?.let { "https://image.tmdb.org/t/p/w185$it" }
+            else -> null
+        }
+}
 
 @Dao
 interface LibraryDao {
@@ -49,6 +65,9 @@ interface LibraryDao {
 
     @Query("SELECT * FROM library_items WHERE tmdbId = :tmdbId AND mediaType = :mediaType LIMIT 1")
     suspend fun getByTmdbMatch(tmdbId: Int, mediaType: String): LibraryItem?
+
+    @Query("SELECT imdbId, posterPath, localPosterUri, posterSource FROM library_items WHERE imdbId IN (:imdbIds)")
+    suspend fun getPostersByImdbIds(imdbIds: List<String>): List<LibraryPosterInfo>
 
     /**
      * Merge-on-conflict, not blind REPLACE - see ADR 0005. If a row already

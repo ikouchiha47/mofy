@@ -23,6 +23,18 @@ interface TmdbApi {
     @GET("tv/{id}")
     suspend fun tvDetail(@Path("id") id: Int): TmdbResultDto
 
+    @GET("find/{externalId}")
+    suspend fun findByImdbId(
+        @Path("externalId") externalId: String,
+        @Query("external_source") externalSource: String = "imdb_id",
+    ): TmdbFindResponse
+
+    @GET("movie/{id}/external_ids")
+    suspend fun movieExternalIds(@Path("id") id: Int): TmdbExternalIdsDto
+
+    @GET("tv/{id}/external_ids")
+    suspend fun tvExternalIds(@Path("id") id: Int): TmdbExternalIdsDto
+
     @GET("genre/movie/list")
     suspend fun genreListMovie(): TmdbGenreListResponse
 

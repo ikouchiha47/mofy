@@ -25,6 +25,20 @@ data class TmdbResultDto(
     val vote_average: Double = 0.0,
 )
 
+@Serializable
+data class TmdbFindResponse(
+    val movie_results: List<TmdbResultDto> = emptyList(),
+    val tv_results: List<TmdbResultDto> = emptyList(),
+) {
+    val posterPath: String?
+        get() = (movie_results + tv_results).firstOrNull()?.poster_path
+}
+
+@Serializable
+data class TmdbExternalIdsDto(
+    val imdb_id: String? = null,
+)
+
 enum class MediaType { MOVIE, TV }
 
 const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342"

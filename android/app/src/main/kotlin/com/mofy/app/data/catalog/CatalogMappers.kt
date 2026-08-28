@@ -33,4 +33,5 @@ fun CatalogItem.toLibraryItem(): LibraryItem = LibraryItem(
     addedAtEpochMillis = System.currentTimeMillis(),
     detailSyncedAtEpochMillis = null,
     feedback = null,
+    imdbId = tconst,
 )

@@ -1,9 +1,15 @@
 package com.mofy.app
 
 import android.app.Application
+import com.mofy.app.data.catalog.CatalogDatabase
+import com.mofy.app.data.catalog.CatalogPosterCache
+import com.mofy.app.data.catalog.CatalogRepository
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.sites.SiteRepository
 import com.mofy.app.data.tmdb.GenreRepository
+import com.mofy.app.data.tmdb.TmdbClient
+import com.mofy.app.watchtogether.signaling.SignalingSettings
+import com.mofy.app.watchtogether.webrtc.PeerConnectionFactoryHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,19 +27,17 @@ class MofyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        SignalingSettings.applyBuildConfig(BuildConfig.WT_SIGNALING_URL)
+        PeerConnectionFactoryHolder.init(this)
         val database = AppDatabase.get(this)
         val genreRepository = GenreRepository(dao = database.genreDao())
         val siteRepository = SiteRepository(dao = database.siteDao())
         applicationScope.launch { genreRepository.ensureSynced() }
         applicationScope.launch { siteRepository.ensureSeeded() }
+        applicationScope.launch { backfillCatalogPosters(database) }
 
         // One-time backfill of library_search/search_vocab for items saved
-        // before those indexes existed - gated by a persisted flag so this
-        // never re-scans the whole library on every launch (it would
-        // otherwise redo O(items x words) DB work on every cold start).
-        // Chunked with a yield() between batches so a large library doesn't
-        // hold this coroutine (and hammer SQLite's single writer connection)
-        // in one unbroken burst - other startup work gets to interleave.
+        // before those indexes existed.
         val prefs = getSharedPreferences("mofy_prefs", MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_SEARCH_INDEX_BACKFILLED, false)) {
             applicationScope.launch {
@@ -46,5 +50,25 @@ class MofyApplication : Application() {
                 prefs.edit().putBoolean(KEY_SEARCH_INDEX_BACKFILLED, true).apply()
             }
         }
+    }
+
+    private suspend fun backfillCatalogPosters(database: AppDatabase) {
+        try {
+            val catalogDb = CatalogDatabase.get(this)
+            val repo = CatalogRepository(catalogDb)
+            val tconsts = (repo.popularItems(6) + repo.newReleases(6))
+                .map { it.tconst }.distinct()
+            val cacheDao = database.catalogPosterCacheDao()
+            val cached = cacheDao.getCachedTconsts(tconsts).toSet()
+            val missing = tconsts.filter { it !in cached }
+            if (missing.isEmpty()) return
+            val fetched = missing.mapNotNull { tconst ->
+                runCatching {
+                    val result = TmdbClient.api.findByImdbId(tconst)
+                    CatalogPosterCache(tconst = tconst, posterPath = result.posterPath)
+                }.getOrNull().also { yield() }
+            }
+            if (fetched.isNotEmpty()) cacheDao.upsertAll(fetched)
+        } catch (_: Exception) {}
     }
 }

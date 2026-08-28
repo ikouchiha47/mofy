@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.mofy.app.data.catalog.CatalogPosterCache
+import com.mofy.app.data.catalog.CatalogPosterCacheDao
 import com.mofy.app.data.sites.SiteDao
 import com.mofy.app.data.sites.TorrentSiteEntity
 import com.mofy.app.data.tmdb.GenreDao
@@ -20,9 +22,10 @@ import kotlinx.coroutines.Dispatchers
         GenreEntity::class,
         TorrentSiteEntity::class,
         WatchProgress::class,
+        CatalogPosterCache::class,
     ],
-    // 12: watch_progress table for Continue Watching (positionMs, durationMs, lastWatchedAt).
-    version = 12,
+    // 14: catalog_poster_cache table for home screen poster enrichment; imdbId on library_items.
+    version = 14,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,6 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun genreDao(): GenreDao
     abstract fun siteDao(): SiteDao
     abstract fun watchProgressDao(): WatchProgressDao
+    abstract fun catalogPosterCacheDao(): CatalogPosterCacheDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

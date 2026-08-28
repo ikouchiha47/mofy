@@ -155,7 +155,7 @@ private fun MofyApp(
         val db = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             com.mofy.app.data.catalog.CatalogDatabase.get(context)
         }
-        catalogRepository = com.mofy.app.data.catalog.CatalogRepository(db, database.libraryDao())
+        catalogRepository = com.mofy.app.data.catalog.CatalogRepository(db, database.libraryDao(), database.catalogPosterCacheDao())
         // fp16 ONNX model (~127MB) — launched as a child so catalog init
         // doesn't block. DiscoverScreen falls back to RuleBasedFacetDecoder until isReady().
         launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -380,19 +380,26 @@ private fun MofyApp(
                         val matched = results.firstOrNull()
                         if (matched != null) {
                             coroutineScope.launch {
+                                val imdbId = runCatching {
+                                    val mediaType = com.mofy.app.data.tmdb.MediaType.valueOf(mediaTypeArg)
+                                    if (mediaType == com.mofy.app.data.tmdb.MediaType.TV)
+                                        com.mofy.app.data.tmdb.TmdbClient.api.tvExternalIds(matched.id).imdb_id
+                                    else
+                                        com.mofy.app.data.tmdb.TmdbClient.api.movieExternalIds(matched.id).imdb_id
+                                }.getOrNull()
                                 if (existingItemId != null) {
                                     val existing = database.libraryDao().getById(existingItemId)
                                     if (existing != null) {
                                         val source = runCatching { LibrarySource.valueOf(existing.source) }.getOrDefault(LibrarySource.DISCOVERED)
                                         database.libraryDao().update(
-                                            matched.toLibraryItem(source).copy(
+                                            matched.toLibraryItem(source, imdbId).copy(
                                                 id = existingItemId,
                                                 addedAtEpochMillis = existing.addedAtEpochMillis,
                                             ),
                                         )
                                     }
                                 } else {
-                                    val item = matched.toLibraryItem(LibrarySource.DISCOVERED)
+                                    val item = matched.toLibraryItem(LibrarySource.DISCOVERED, imdbId)
                                     database.libraryDao().saveConfirmedMatch(item)
                                     // Background: generate embedding so this title is
                                     // findable via semantic search even if it's not in catalog.db.
@@ -527,7 +534,13 @@ private fun MofyApp(
                                 // re-confirming the same torrent is a no-op while
                                 // different releases of the same title both stay.
                                 coroutineScope.launch {
-                                    val libraryItem = confirmed.toLibraryItem(LibrarySource.SAVED)
+                                    val extImdbId = runCatching {
+                                        if (confirmed.mediaType == com.mofy.app.data.tmdb.MediaType.TV)
+                                            com.mofy.app.data.tmdb.TmdbClient.api.tvExternalIds(confirmed.id).imdb_id
+                                        else
+                                            com.mofy.app.data.tmdb.TmdbClient.api.movieExternalIds(confirmed.id).imdb_id
+                                    }.getOrNull()
+                                    val libraryItem = confirmed.toLibraryItem(LibrarySource.SAVED, extImdbId)
                                     database.libraryDao().saveConfirmedMatch(libraryItem)
                                     val saved = database.libraryDao().getByTmdbMatch(
                                         libraryItem.tmdbId!!,
@@ -552,7 +565,15 @@ private fun MofyApp(
                         },
                         onSaveToLibrary = { results ->
                             coroutineScope.launch {
-                                results.forEach { database.libraryDao().saveConfirmedMatch(it.toLibraryItem(LibrarySource.SAVED)) }
+                                results.forEach { result ->
+                                    val extImdbId = runCatching {
+                                        if (result.mediaType == com.mofy.app.data.tmdb.MediaType.TV)
+                                            com.mofy.app.data.tmdb.TmdbClient.api.tvExternalIds(result.id).imdb_id
+                                        else
+                                            com.mofy.app.data.tmdb.TmdbClient.api.movieExternalIds(result.id).imdb_id
+                                    }.getOrNull()
+                                    database.libraryDao().saveConfirmedMatch(result.toLibraryItem(LibrarySource.SAVED, extImdbId))
+                                }
                             }
                             android.widget.Toast.makeText(
                                 context,

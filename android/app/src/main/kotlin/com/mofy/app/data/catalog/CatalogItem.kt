@@ -11,6 +11,7 @@ data class CatalogItem(
     val numVotes: Int?,
     val overview: String,
     val runtimeMinutes: Int?,
+    val posterUrl: String? = null,
 ) {
     val resolvedGenreNames: List<String>
         get() = genres?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()

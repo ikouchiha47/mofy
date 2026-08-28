@@ -107,6 +107,7 @@ class CatalogPagingSource(
                 averageRating = getDoubleOrNull("averageRating"),
                 numVotes = getIntOrNull("numVotes"),
                 overview = getString(getColumnIndexOrThrow("overview")),
+                runtimeMinutes = getIntOrNull("runtimeMinutes"),
             )
         }
         return items

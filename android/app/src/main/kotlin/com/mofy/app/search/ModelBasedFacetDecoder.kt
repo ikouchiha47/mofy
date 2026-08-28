@@ -3,16 +3,11 @@ package com.mofy.app.search
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import android.app.DownloadManager
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.nio.LongBuffer
 
 private const val TAG = "ModelBasedFacetDecoder"
@@ -22,8 +17,8 @@ private const val MODEL_URL =
     "https://github.com/ikouchiha47/mofy/releases/download/v0.1-facet/facet_model_fp16.onnx"
 private const val VOCAB_URL =
     "https://github.com/ikouchiha47/mofy/releases/download/v0.1-facet/facet_vocab.txt"
-private const val PREFS = "facet_decoder"
-private const val PREF_DL_ID = "model_download_id"
+private const val NOTIF_CHANNEL = "mofy_model_dl"
+private const val NOTIF_ID = 9001
 private const val MAX_SEQ_LEN = 64
 
 private val GENRES = listOf(
@@ -34,41 +29,36 @@ private val GENRES = listOf(
     "Talk-Show", "Game-Show", "Adult",
 )
 
-/**
- * FacetDecoder backed by distilbert-base-uncased fp16 ONNX model (~127MB).
- *
- * Model is downloaded via [DownloadManager] (resumeable, survives process death,
- * shows in the notification shade). Falls back to [RuleBasedFacetDecoder] until ready.
- */
 class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
 
     @Volatile private var session: OrtSession? = null
     @Volatile private var tokenizer: WordPieceTokenizer? = null
     private val fallback = RuleBasedFacetDecoder()
     private val env = OrtEnvironment.getEnvironment()
-    private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
-    private val dm by lazy { context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager }
-
-    // DownloadManager requires external storage — it cannot write to internal filesDir.
-    private fun modelDir(): File = context.getExternalFilesDir(null) ?: context.filesDir
+    private val downloader: ModelDownloader = HttpModelDownloader(context, NOTIF_CHANNEL, NOTIF_ID)
 
     suspend fun init(): Boolean = withContext(Dispatchers.IO) {
         if (session != null) return@withContext true
         try {
             val vocabFile = File(context.filesDir, VOCAB_FILE)
-            if (!vocabFile.exists()) downloadSmall(VOCAB_URL, vocabFile)
+            if (!vocabFile.exists()) {
+                Log.i(TAG, "Downloading vocab…")
+                downloader.download(VOCAB_URL, vocabFile)
+            }
 
-            val modelFile = File(modelDir(), MODEL_FILE)
+            val modelFile = File(context.filesDir, MODEL_FILE)
             if (!modelFile.exists()) {
-                awaitDownload(MODEL_URL, MODEL_FILE, "Mofy smart search model")
+                downloader.downloadWithProgress(MODEL_URL, modelFile, "Mofy – smart search model")
             }
 
             tokenizer = WordPieceTokenizer(vocabFile.readLines())
             session = env.createSession(modelFile.absolutePath)
             Log.i(TAG, "ModelBasedFacetDecoder ready")
+            (downloader as? HttpModelDownloader)?.cancelNotif()
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init ModelBasedFacetDecoder", e)
+            (downloader as? HttpModelDownloader)?.cancelNotif()
             false
         }
     }
@@ -76,7 +66,10 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
     fun isReady(): Boolean = session != null
 
     override fun decode(query: String): FacetResult {
-        val sess = session ?: return fallback.decode(query)
+        val sess = session ?: run {
+            Log.d(TAG, "session not ready, rule-based fallback for '$query'")
+            return fallback.decode(query)
+        }
         val tok = tokenizer ?: return fallback.decode(query)
         return try {
             val (ids, mask) = tok.encode(query, MAX_SEQ_LEN)
@@ -88,8 +81,14 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
             val inputs = mapOf("input_ids" to idsTensor, "attention_mask" to maskTensor)
             val out = sess.run(inputs)
 
-            fun floats(name: String) =
-                (out.get(name).get().value as Array<*>)[0] as FloatArray
+            fun floats(name: String): FloatArray {
+                val v = out.get(name).get().value
+                return when (v) {
+                    is Array<*> -> v[0] as FloatArray  // batch dim present
+                    is FloatArray -> v                 // flat output
+                    else -> throw IllegalStateException("Unexpected output type: ${v?.javaClass}")
+                }
+            }
 
             val genreLogits = floats("genre_logits")
             val genres = genreLogits.indices
@@ -103,9 +102,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
             val popularityIdx = popularityLogits.indices.maxByOrNull { popularityLogits[it] } ?: 0
             val popularity = listOf("none", "niche", "mainstream")[popularityIdx]
 
-            idsTensor.close(); maskTensor.close(); out.close()
-
-            FacetResult(
+            val result = FacetResult(
                 genres = genres,
                 hasDate = boolHead("has_date_logits"),
                 hasRuntime = boolHead("has_runtime_logits"),
@@ -115,90 +112,17 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
                 hasOther = boolHead("has_other_logits"),
                 popularity = popularity,
             )
+            idsTensor.close(); maskTensor.close(); out.close()
+            Log.d(TAG, "query='$query' genres=${result.genres} popularity=${result.popularity} hasDate=${result.hasDate} hasMood=${result.hasMood}")
+            result
         } catch (e: Exception) {
             Log.w(TAG, "Inference failed, using rule-based fallback", e)
             fallback.decode(query)
         }
     }
 
-    /**
-     * Enqueues a DownloadManager download and suspends until it completes.
-     * If a prior download ID is stored (app was killed mid-download), reuses it.
-     */
-    private suspend fun awaitDownload(url: String, filename: String, title: String) {
-        val dest = File(modelDir(), filename)
-
-        var dlId = prefs.getLong(PREF_DL_ID, -1L)
-
-        if (dlId == -1L || !isDownloadActive(dlId)) {
-            val req = DownloadManager.Request(Uri.parse(url))
-                .setTitle(title)
-                .setDescription("Downloading…")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                .setDestinationInExternalFilesDir(context, null, filename)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(false)
-            dlId = dm.enqueue(req)
-            prefs.edit().putLong(PREF_DL_ID, dlId).apply()
-            Log.i(TAG, "Enqueued model download id=$dlId")
-        } else {
-            Log.i(TAG, "Resuming existing download id=$dlId")
-        }
-
-        // Poll until done or failed
-        while (true) {
-            val status = queryStatus(dlId)
-            when (status) {
-                DownloadManager.STATUS_SUCCESSFUL -> {
-                    prefs.edit().remove(PREF_DL_ID).apply()
-                    Log.i(TAG, "Model download complete")
-                    return
-                }
-                DownloadManager.STATUS_FAILED -> {
-                    prefs.edit().remove(PREF_DL_ID).apply()
-                    dest.delete()
-                    throw Exception("DownloadManager failed for $filename")
-                }
-                else -> delay(2_000)
-            }
-        }
-    }
-
-    private fun queryStatus(id: Long): Int {
-        val q = DownloadManager.Query().setFilterById(id)
-        return dm.query(q)?.use { cursor ->
-            if (cursor.moveToFirst())
-                cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-            else DownloadManager.STATUS_FAILED
-        } ?: DownloadManager.STATUS_FAILED
-    }
-
-    private fun isDownloadActive(id: Long): Boolean {
-        val status = queryStatus(id)
-        return status == DownloadManager.STATUS_RUNNING ||
-               status == DownloadManager.STATUS_PENDING ||
-               status == DownloadManager.STATUS_PAUSED
-    }
-
-    /** Small files (vocab ~226KB) use direct HTTP — no need for DownloadManager overhead. */
-    private fun downloadSmall(url: String, dest: File) {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 30_000
-        conn.instanceFollowRedirects = true
-        try {
-            conn.inputStream.use { it.copyTo(dest.outputStream()) }
-        } catch (e: Exception) {
-            dest.delete(); throw e
-        } finally {
-            conn.disconnect()
-        }
-    }
 }
 
-/**
- * Minimal WordPiece tokenizer matching BERT's encode logic.
- */
 class WordPieceTokenizer(vocabLines: List<String>) {
     private val vocab: Map<String, Int> = vocabLines.mapIndexed { i, t -> t to i }.toMap()
     private val clsId = vocab["[CLS]"] ?: 101

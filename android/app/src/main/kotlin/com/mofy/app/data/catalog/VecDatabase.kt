@@ -37,11 +37,14 @@ object VecDatabase {
         return try {
             val blob = embedding.toBlob()
             val results = mutableListOf<Pair<String, String>>()
+            // vec0 KNN syntax: WHERE embedding MATCH <blob> ORDER BY distance LIMIT k
             val stmt = db.prepare(
-                "SELECT m.tconst, m.title FROM catalog_vec v " +
-                    "JOIN catalog_meta m ON m.rowid = v.rowid " +
-                    "WHERE knn_match(v.embedding, ?, ?) " +
-                    "ORDER BY knn_id ASC",
+                "WITH knn AS (" +
+                    "SELECT rowid, distance FROM catalog_vec WHERE embedding MATCH ? AND k = ?" +
+                    ") " +
+                    "SELECT m.tconst, m.title FROM knn " +
+                    "JOIN catalog_meta m ON m.rowid = knn.rowid " +
+                    "ORDER BY knn.distance",
             )
             try {
                 stmt.bindBlob(1, blob)

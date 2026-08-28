@@ -56,10 +56,19 @@ class CatalogRepository(
         val queryVec = embedder.embed(query)
 
         // --- Track B: embedding KNN via catalog_vec.db ---
+        // catalog_vec stores float[256] — truncate 768-dim output to first 256 dims (Matryoshka).
         val embeddingRanks: Map<String, Int> = if (queryVec != null) {
-            VecDatabase.knn(context, queryVec, SEMANTIC_K)
-                .mapIndexed { rank, (tconst, _) -> tconst to rank + 1 }
-                .toMap()
+            try {
+                val raw256 = queryVec.copyOf(256)
+                val norm = kotlin.math.sqrt(raw256.fold(0f) { acc, x -> acc + x * x })
+                val vec256 = if (norm == 0f) raw256 else FloatArray(256) { raw256[it] / norm }
+                VecDatabase.knn(context, vec256, SEMANTIC_K)
+                    .mapIndexed { rank, (tconst, _) -> tconst to rank + 1 }
+                    .toMap()
+            } catch (e: Exception) {
+                android.util.Log.w("CatalogRepository", "KNN failed, skipping embedding track", e)
+                emptyMap()
+            }
         } else emptyMap()
 
         // --- Track A: FTS keyword search ---
@@ -147,7 +156,8 @@ class CatalogRepository(
             db.rawQuery(
                 "SELECT ci.tconst FROM catalog_fts f " +
                     "JOIN catalog_items ci ON ci.tconst = f.tconst " +
-                    "WHERE catalog_fts MATCH ? LIMIT ?",
+                    "WHERE catalog_fts MATCH ? AND ci.numVotes >= 5000 " +
+                    "ORDER BY ci.numVotes DESC LIMIT ?",
                 arrayOf(ftsQuery, limit.toString()),
             ).use { cursor ->
                 buildList {
@@ -166,7 +176,7 @@ class CatalogRepository(
         val inclArgs = genres.map { "%$it%" }
         val exclArgs = excluded.map { "%$it%" }
         return db.rawQuery(
-            "SELECT ci.tconst FROM catalog_items ci WHERE ($inclCond)$exclCond LIMIT ?",
+            "SELECT ci.tconst FROM catalog_items ci WHERE ($inclCond)$exclCond ORDER BY ci.numVotes DESC LIMIT ?",
             (inclArgs + exclArgs + listOf(limit.toString())).toTypedArray(),
         ).use { cursor ->
             buildList {

@@ -1,6 +1,11 @@
 package com.mofy.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -85,6 +90,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
+        }
         pendingDeepLink = intent?.data?.toString()
         // App is forced dark regardless of system theme (see ADR 0003), so
         // status/nav bar icons must always be light, not auto-detected.
@@ -163,6 +173,9 @@ private fun MofyApp(
             if (ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 android.widget.Toast.makeText(context, "Smart search ready", android.widget.Toast.LENGTH_SHORT).show()
             }
+        }
+        launch(kotlinx.coroutines.Dispatchers.IO) {
+            onDeviceEmbedder.init()
         }
     }
     val coroutineScope = rememberCoroutineScope()

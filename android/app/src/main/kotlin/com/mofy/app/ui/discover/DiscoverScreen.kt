@@ -101,6 +101,9 @@ fun DiscoverScreen(
     var filterSheetOpen by remember { mutableStateOf(false) }
 
     var queryInput by remember { mutableStateOf("") }
+    // committedQuery only updates on IME Search/Done action — avoids per-keystroke embedding calls.
+    var committedQuery by remember { mutableStateOf("") }
+    // debouncedQuery drives the FTS paging flow (cheap, fine to run on keystrokes).
     var debouncedQuery by remember { mutableStateOf("") }
     LaunchedEffect(queryInput) {
         delay(300)
@@ -110,8 +113,8 @@ fun DiscoverScreen(
     // Semantic mode: queries >= 3 chars hit the embedding + RRF pipeline.
     // Falls back to FTS paging if the embedder is unavailable or init fails.
     var semanticResults by remember { mutableStateOf<List<CatalogItem>?>(null) }
-    val semanticMode = debouncedQuery.length >= 3
-    LaunchedEffect(debouncedQuery) {
+    val semanticMode = committedQuery.length >= 3
+    LaunchedEffect(committedQuery) {
         if (!semanticMode || catalogRepository == null || embedder == null) {
             semanticResults = null
             return@LaunchedEffect
@@ -120,7 +123,7 @@ fun DiscoverScreen(
             val ready = embedder.init()
             semanticResults = if (ready) {
                 catalogRepository.semanticSearch(
-                    query = debouncedQuery,
+                    query = committedQuery,
                     context = context,
                     embedder = embedder,
                     facetDecoder = facetDecoder,
@@ -155,11 +158,17 @@ fun DiscoverScreen(
                 placeholder = { Text("Search the catalog") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = if (queryInput.isNotEmpty()) {
-                    { IconButton(onClick = { queryInput = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
+                    { IconButton(onClick = { queryInput = ""; committedQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
                 } else {
                     null
                 },
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { committedQuery = queryInput },
+                ),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             )
 

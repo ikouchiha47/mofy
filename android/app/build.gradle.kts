@@ -172,10 +172,14 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
-    // On-device embedding for semantic search (Phase 09).
-    // TFLite dependency deferred until SentencePiece tokenizer is implemented;
-    // OnDeviceEmbedder.embed() returns null in the meantime and semantic search
-    // degrades gracefully to FTS + genre-boost RRF.
+    // On-device embedding — EmbeddingGemma-300m via LiteRT Interpreter API (CPU).
+    // litert-api:2.2.0 (CompiledModel) aborts in Environment.nativeCreate on this device.
+    // litert:2.2.0 + litert-api:2.2.0 share namespace com.google.ai.edge.litert → build conflict.
+    // litert:1.4.0 uses namespace org.tensorflow.lite, litert-api:1.4.0 uses org.tensorflow.lite.api
+    // — no conflict — and bundles the self-contained libtensorflowlite_jni.so.
+    implementation("com.google.ai.edge.litert:litert:1.4.0")
+    implementation("ai.djl.huggingface:tokenizers:0.33.0")
+    implementation("ai.djl.android:tokenizer-native:0.33.0")
 
     // On-device facet classification (Phase 09).
     // ONNX Runtime for running facet_model_fp16.onnx (distilbert-base-uncased, 127MB).

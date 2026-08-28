@@ -20,8 +20,13 @@ interface CatalogPosterCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(entries: List<CatalogPosterCache>)
 
-    @Query("SELECT tconst FROM catalog_poster_cache WHERE tconst IN (:tconsts)")
+    // Only count rows with a real poster as "done" — null means TMDB returned
+    // no match last time, which can be transient; retry on next launch.
+    @Query("SELECT tconst FROM catalog_poster_cache WHERE tconst IN (:tconsts) AND posterPath IS NOT NULL")
     suspend fun getCachedTconsts(tconsts: List<String>): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: CatalogPosterCache)
 
     @Query("SELECT tconst, posterPath FROM catalog_poster_cache WHERE tconst IN (:tconsts) AND posterPath IS NOT NULL")
     suspend fun getPosterPaths(tconsts: List<String>): List<TconstPosterPath>

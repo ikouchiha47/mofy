@@ -7,6 +7,9 @@ import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import retrofit2.Retrofit
 
 private const val BASE_URL = "https://api.themoviedb.org/3/"
@@ -21,8 +24,28 @@ object TmdbClient {
         chain.proceed(request)
     }
 
+    // Token bucket: 40 requests per 10 seconds
+    private val bucketTokens = AtomicInteger(40)
+    private val bucketResetAt = AtomicLong(System.currentTimeMillis() + 10_000)
+
+    private val rateLimitInterceptor = Interceptor { chain ->
+        val now = System.currentTimeMillis()
+        if (now >= bucketResetAt.get()) {
+            bucketTokens.set(40)
+            bucketResetAt.set(now + 10_000)
+        }
+        if (bucketTokens.decrementAndGet() < 0) {
+            val wait = bucketResetAt.get() - System.currentTimeMillis()
+            if (wait > 0) Thread.sleep(wait)
+            bucketTokens.set(39)
+            bucketResetAt.set(System.currentTimeMillis() + 10_000)
+        }
+        chain.proceed(chain.request())
+    }
+
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
+        .addInterceptor(rateLimitInterceptor)
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
         .build()
 

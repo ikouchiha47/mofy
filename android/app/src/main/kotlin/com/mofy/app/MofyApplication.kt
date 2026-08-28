@@ -53,6 +53,7 @@ class MofyApplication : Application() {
     }
 
     private suspend fun backfillCatalogPosters(database: AppDatabase) {
+        android.util.Log.d("CatalogPosterBackfill", "entered")
         try {
             android.util.Log.d("CatalogPosterBackfill", "starting")
             val catalogDb = CatalogDatabase.get(this)
@@ -65,16 +66,19 @@ class MofyApplication : Application() {
             val missing = tconsts.filter { it !in cached }
             android.util.Log.d("CatalogPosterBackfill", "missing=${missing.size}")
             if (missing.isEmpty()) return
-            val fetched = missing.mapNotNull { tconst ->
+            var saved = 0
+            missing.forEach { tconst ->
                 runCatching {
                     val result = TmdbClient.api.findByImdbId(tconst)
                     android.util.Log.d("CatalogPosterBackfill", "$tconst -> poster=${result.posterPath}")
-                    CatalogPosterCache(tconst = tconst, posterPath = result.posterPath)
+                    if (result.posterPath != null) {
+                        cacheDao.upsert(CatalogPosterCache(tconst = tconst, posterPath = result.posterPath))
+                        saved++
+                    }
                 }.onFailure { android.util.Log.e("CatalogPosterBackfill", "$tconst failed: $it") }
-                 .getOrNull().also { yield() }
+                yield()
             }
-            if (fetched.isNotEmpty()) cacheDao.upsertAll(fetched)
-            android.util.Log.d("CatalogPosterBackfill", "done, cached ${fetched.size} posters")
+            android.util.Log.d("CatalogPosterBackfill", "done, saved $saved/${missing.size} posters")
         } catch (e: Exception) {
             android.util.Log.e("CatalogPosterBackfill", "outer failure: $e")
         }

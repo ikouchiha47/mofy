@@ -24,8 +24,8 @@ import kotlinx.coroutines.Dispatchers
         WatchProgress::class,
         CatalogPosterCache::class,
     ],
-    // 14: catalog_poster_cache table for home screen poster enrichment; imdbId on library_items.
-    version = 14,
+    // 15: imdbId index on library_items (schema hash fix).
+    version = 15,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

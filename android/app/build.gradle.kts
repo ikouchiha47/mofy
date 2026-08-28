@@ -46,6 +46,8 @@ android {
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         buildConfigField("String", "WT_SIGNALING_URL", "\"$wtSignalingUrl\"")
 
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         // Personal-use app installed only on our own arm64 phones - shipping
         // libVLC + WebRTC native libs for x86/x86_64/armeabi-v7a as well
         // roughly quadruples APK size for architectures nobody runs.
@@ -54,9 +56,28 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            // Credentials read from .env / .env.prod (never committed).
+            // Add to .env:
+            //   KEYSTORE_PATH=/path/to/mofy.jks
+            //   KEYSTORE_PASSWORD=...
+            //   KEY_ALIAS=mofy
+            //   KEY_PASSWORD=...
+            val ksPath = env.getProperty("KEYSTORE_PATH", "")
+            if (ksPath.isNotEmpty()) {
+                storeFile = file(ksPath)
+                storePassword = env.getProperty("KEYSTORE_PASSWORD", "")
+                keyAlias = env.getProperty("KEY_ALIAS", "")
+                keyPassword = env.getProperty("KEY_PASSWORD", "")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -71,6 +92,7 @@ android {
     // directly out of the APK.
     packaging {
         jniLibs.useLegacyPackaging = true
+
     }
 
     compileOptions {
@@ -84,6 +106,9 @@ android {
         }
         getByName("test") {
             kotlin.directories += "src/test/kotlin"
+        }
+        getByName("androidTest") {
+            kotlin.directories += "src/androidTest/kotlin"
         }
     }
 }
@@ -148,9 +173,13 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // On-device embedding for semantic search (Phase 09).
-    // Raw TFLite Interpreter for litert-community/embeddinggemma-300m.
-    // SentencePiece tokenization is a TODO - embed() returns null until then.
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    // TFLite dependency deferred until SentencePiece tokenizer is implemented;
+    // OnDeviceEmbedder.embed() returns null in the meantime and semantic search
+    // degrades gracefully to FTS + genre-boost RRF.
+
+    // On-device facet classification (Phase 09).
+    // ONNX Runtime for running facet_model_fp16.onnx (distilbert-base-uncased, 127MB).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
@@ -159,7 +188,12 @@ dependencies {
     // see) - integration smoke test only for now, real rubric TBD.
     testImplementation("com.lemonappdev:konsist:0.17.3")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.21.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
+
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 tasks.withType<Test> {

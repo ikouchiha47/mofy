@@ -19,16 +19,17 @@ import kotlinx.coroutines.Dispatchers
         LibrarySearchEntity::class,
         GenreEntity::class,
         TorrentSiteEntity::class,
+        WatchProgress::class,
     ],
-    // 11: library_items gains embeddingBlob (BLOB nullable) for on-device
-    // semantic search over user-added titles not in catalog.db.
-    version = 11,
+    // 12: watch_progress table for Continue Watching (positionMs, durationMs, lastWatchedAt).
+    version = 12,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
     abstract fun genreDao(): GenreDao
     abstract fun siteDao(): SiteDao
+    abstract fun watchProgressDao(): WatchProgressDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

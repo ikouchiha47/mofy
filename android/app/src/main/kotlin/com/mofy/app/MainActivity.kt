@@ -148,6 +148,7 @@ private fun MofyApp(
     // CatalogDatabase.get() copies a 39MB asset out on first run - real file
     // I/O, so it can't run inline on the composition/main thread.
     val onDeviceEmbedder = remember { com.mofy.app.search.OnDeviceEmbedder(context) }
+    val modelFacetDecoder = remember { com.mofy.app.search.ModelBasedFacetDecoder(context) }
 
     var catalogRepository by remember { androidx.compose.runtime.mutableStateOf<com.mofy.app.data.catalog.CatalogRepository?>(null) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -155,6 +156,14 @@ private fun MofyApp(
             com.mofy.app.data.catalog.CatalogDatabase.get(context)
         }
         catalogRepository = com.mofy.app.data.catalog.CatalogRepository(db, database.libraryDao())
+        // fp16 ONNX model (~127MB) — launched as a child so catalog init
+        // doesn't block. DiscoverScreen falls back to RuleBasedFacetDecoder until isReady().
+        launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ok = modelFacetDecoder.init()
+            if (ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                android.widget.Toast.makeText(context, "Smart search ready", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
     }
     val coroutineScope = rememberCoroutineScope()
 
@@ -313,7 +322,16 @@ private fun MofyApp(
                 HomeScreen(
                     contentPadding = contentPadding,
                     libraryDao = database.libraryDao(),
+                    watchProgressDao = database.watchProgressDao(),
+                    catalogRepository = catalogRepository,
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
+                    onCatalogItemClick = { item ->
+                        val mediaType = if (item.titleType == "tvSeries") "TV" else "MOVIE"
+                        navController.navigate(PushedRoute.resolveMatch(item.title, mediaType))
+                    },
+                    onContinueWatching = { wp ->
+                        navController.navigate("detail/${wp.libraryItemId}")
+                    },
                 )
             }
             composable(TopLevelDestination.BROWSE.route) {
@@ -336,6 +354,7 @@ private fun MofyApp(
                     contentPadding = contentPadding,
                     catalogRepository = catalogRepository,
                     embedder = onDeviceEmbedder,
+                    facetDecoder = modelFacetDecoder,
                     onAdd = { catalogItem ->
                         // Catalog items are IMDb-only, never have a tmdbId - always
                         // resolve via text search + user confirmation (radio-select,

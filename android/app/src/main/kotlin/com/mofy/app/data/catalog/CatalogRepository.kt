@@ -84,6 +84,49 @@ class CatalogRepository(
         catalogResults + libraryResults.filter { it.tconst !in seen }
     }
 
+    suspend fun popularItems(limit: Int = 20): List<CatalogItem> = withContext(Dispatchers.IO) {
+        db.rawQuery(
+            "SELECT tconst, title, titleType, startYear, genres, averageRating, numVotes, overview, runtimeMinutes " +
+                "FROM catalog_items WHERE averageRating IS NOT NULL AND numVotes >= 50000 " +
+                "ORDER BY numVotes DESC LIMIT ?",
+            arrayOf(limit.toString()),
+        ).use { it.toCatalogItems() }
+    }
+
+    suspend fun newReleases(limit: Int = 20): List<CatalogItem> = withContext(Dispatchers.IO) {
+        db.rawQuery(
+            "SELECT tconst, title, titleType, startYear, genres, averageRating, numVotes, overview, runtimeMinutes " +
+                "FROM catalog_items WHERE startYear >= 2022 AND numVotes >= 5000 " +
+                "ORDER BY startYear DESC, numVotes DESC LIMIT ?",
+            arrayOf(limit.toString()),
+        ).use { it.toCatalogItems() }
+    }
+
+    suspend fun byGenre(genre: String, limit: Int = 20): List<CatalogItem> = withContext(Dispatchers.IO) {
+        db.rawQuery(
+            "SELECT tconst, title, titleType, startYear, genres, averageRating, numVotes, overview, runtimeMinutes " +
+                "FROM catalog_items WHERE genres LIKE ? AND numVotes >= 10000 " +
+                "ORDER BY numVotes DESC LIMIT ?",
+            arrayOf("%$genre%", limit.toString()),
+        ).use { it.toCatalogItems() }
+    }
+
+    private fun android.database.Cursor.toCatalogItems(): List<CatalogItem> = buildList {
+        while (moveToNext()) {
+            add(CatalogItem(
+                tconst = getString(0),
+                title = getString(1),
+                titleType = getString(2),
+                startYear = if (isNull(3)) null else getInt(3),
+                genres = if (isNull(4)) null else getString(4),
+                averageRating = if (isNull(5)) null else getDouble(5),
+                numVotes = if (isNull(6)) null else getInt(6),
+                overview = getString(7) ?: "",
+                runtimeMinutes = if (isNull(8)) null else getInt(8),
+            ))
+        }
+    }
+
     private fun ftsSearch(query: String, limit: Int): List<String> {
         val ftsQuery = query.trim().split(Regex("\\s+")).joinToString(" OR ") { "\"$it\"" }
         return try {

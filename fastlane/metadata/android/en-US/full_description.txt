@@ -1,0 +1,10 @@
+Mofy is a personal media tracker for movies and TV shows.
+
+Features:
+- Browse and search a local IMDb-based catalog with semantic search
+- Track your watch history and personal library
+- On-device facet classification (genre, mood, rating, era) — no cloud required
+- Watch Together: synchronized playback over WebRTC with friends
+- Plays local files via libVLC
+
+All processing happens on-device. No accounts, no telemetry, no ads.

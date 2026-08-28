@@ -1,0 +1,21 @@
+Categories:
+  - Multimedia
+
+License: GPL-3.0-only
+
+WebSite: https://github.com/ikouchiha47/mofy
+SourceCode: https://github.com/ikouchiha47/mofy
+IssueTracker: https://github.com/ikouchiha47/mofy/issues
+
+AutoName: Mofy
+
+Builds:
+  - versionName: '0.1'
+    versionCode: 1
+    commit: v0.1
+    subdir: android
+    gradle:
+      - yes
+
+AutoUpdateMode: Version %v
+UpdateCheckMode: Tags

@@ -599,8 +599,6 @@ private fun MofyApp(
                 if (showManualEntry) {
                     com.mofy.app.ui.library.ManualEntryScreen(
                         contentPadding = contentPadding,
-                        initialTitle = title,
-                        initialFileUrl = importUri,
                         onSave = { libraryItem, fileUrl ->
                             coroutineScope.launch {
                                 database.libraryDao().upsert(libraryItem)
@@ -642,7 +640,6 @@ private fun MofyApp(
                         // known not to be there - goes straight to manual
                         // entry with the guessed title + picked file's URI
                         // carried over, not retyped.
-                        onAddManually = { showManualEntry = true },
                         onConfirm = {},
                         onSaveToLibrary = { results ->
                             coroutineScope.launch {
@@ -940,8 +937,6 @@ private fun MofyApp(
                 displayName = "You",
                 libraryItems = allLibraryItems,
                 onLibraryItemPicked = { joinPickedItem = it },
-                initialRoomKey = deepLinkedRoomKey,
-                initialSignalingUrl = deepLinkedSignalingUrl,
                 onDismiss = {
                     showJoinSheet = false
                     deepLinkedRoomKey = null

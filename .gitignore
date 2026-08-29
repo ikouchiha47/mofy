@@ -18,3 +18,7 @@ ml/__pycache__/
 *.webm
 *.mp4
 *.mkv
+
+# System generated
+vendor/
+logs/

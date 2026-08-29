@@ -22,3 +22,7 @@ ml/__pycache__/
 # System generated
 vendor/
 logs/
+
+# Release signing (never commit - stored as GitHub Actions secrets instead)
+*.jks
+*.keystore

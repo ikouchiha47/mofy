@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mofy.app.data.catalog.CatalogItem
 import com.mofy.app.data.catalog.CatalogRepository
+import com.mofy.app.data.catalog.SyncedCatalogDao
+import com.mofy.app.data.catalog.SyncedCatalogItem
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -52,6 +54,7 @@ fun HomeScreen(
     libraryDao: LibraryDao? = null,
     watchProgressDao: WatchProgressDao? = null,
     catalogRepository: CatalogRepository? = null,
+    syncedCatalogDao: SyncedCatalogDao? = null,
     onItemClick: (LibraryItem) -> Unit = {},
     onCatalogItemClick: (CatalogItem) -> Unit = {},
     onContinueWatching: (WatchProgressWithItem) -> Unit = {},
@@ -63,6 +66,7 @@ fun HomeScreen(
     var popular by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var newReleases by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var genreSections by remember { mutableStateOf<List<Pair<String, List<CatalogItem>>>>(emptyList()) }
+    var newAndUpcoming by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
 
     LaunchedEffect(catalogRepository, posterVersion) {
         if (catalogRepository == null) return@LaunchedEffect
@@ -71,6 +75,12 @@ fun HomeScreen(
         genreSections = HOME_GENRES.map { genre ->
             genre to catalogRepository.byGenre(genre, 6)
         }.filter { it.second.isNotEmpty() }
+    }
+
+    LaunchedEffect(syncedCatalogDao) {
+        if (syncedCatalogDao != null) {
+            newAndUpcoming = syncedCatalogDao.recent(6).map { it.toHomeCatalogItem() }
+        }
     }
 
     LazyColumn(
@@ -122,6 +132,13 @@ fun HomeScreen(
             item {
                 SectionHeader("New Releases")
                 CatalogRow(newReleases, onCatalogItemClick)
+            }
+        }
+
+        if (newAndUpcoming.isNotEmpty()) {
+            item {
+                SectionHeader("New & Upcoming")
+                CatalogRow(newAndUpcoming, onCatalogItemClick)
             }
         }
 
@@ -294,3 +311,16 @@ private fun LibraryPosterCard(item: LibraryItem, onClick: () -> Unit) {
         )
     }
 }
+
+private fun SyncedCatalogItem.toHomeCatalogItem(): CatalogItem = CatalogItem(
+    tconst = "synced:$id",
+    title = title,
+    titleType = if (mediaType == "tv") "tvSeries" else "movie",
+    startYear = releaseDate?.take(4)?.toIntOrNull(),
+    genres = genres,
+    averageRating = null,
+    numVotes = null,
+    overview = overview,
+    runtimeMinutes = null,
+    posterUrl = posterUrl,
+)

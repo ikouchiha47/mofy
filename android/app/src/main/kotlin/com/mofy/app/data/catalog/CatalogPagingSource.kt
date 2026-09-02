@@ -62,8 +62,16 @@ class CatalogPagingSource(
                 }
 
                 val where = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
+                // catalog_fts is a CONTENTLESS FTS4 table (content='' - see
+                // ml/scripts/05_prepare_android_asset.py) - it can only ever
+                // return rowid via SELECT, never tconst. catalog_fts.rowid
+                // is built equal to catalog_items.rowid by that script, so
+                // the join must go through rowid, not tconst - joining on
+                // f.tconst always threw (surfaced here as LoadResult.Error,
+                // caught by the outer try/catch below), meaning every
+                // Discover keyword search failed until this fix.
                 val fromClause = if (matchQuery != null) {
-                    "catalog_items ci JOIN catalog_fts f ON f.tconst = ci.tconst"
+                    "catalog_items ci JOIN catalog_fts f ON f.rowid = ci.rowid"
                 } else {
                     "catalog_items ci"
                 }

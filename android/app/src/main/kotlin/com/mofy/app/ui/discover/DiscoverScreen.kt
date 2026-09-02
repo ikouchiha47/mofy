@@ -47,15 +47,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import coil3.compose.AsyncImage
 import com.mofy.app.data.catalog.CatalogItem
 import com.mofy.app.data.catalog.CatalogRepository
 import com.mofy.app.data.catalog.CatalogSort
+import com.mofy.app.data.catalog.DiscoverSource
 import com.mofy.app.data.catalog.IMDB_GENRES
+import com.mofy.app.data.catalog.SyncedCatalogDao
+import com.mofy.app.data.catalog.SyncedCatalogItem
+import com.mofy.app.data.catalog.SyncedCatalogPagingSource
 import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.ui.components.ActiveFilterChip
 import com.mofy.app.ui.components.FilterButton
@@ -90,6 +98,7 @@ fun DiscoverScreen(
     catalogRepository: CatalogRepository?,
     embedder: OnDeviceEmbedder?,
     facetDecoder: FacetDecoder = remember { RuleBasedFacetDecoder() },
+    syncedCatalogDao: SyncedCatalogDao? = null,
     onAdd: (CatalogItem) -> Unit,
 ) {
     val context = LocalContext.current
@@ -98,6 +107,7 @@ fun DiscoverScreen(
     var selectedType by remember { mutableStateOf<MediaType?>(null) }
     var selectedGenre by remember { mutableStateOf<String?>(null) }
     var selectedSort by remember { mutableStateOf(CatalogSort.MOST_VOTED) }
+    var discoverSource by remember { mutableStateOf(DiscoverSource.ALL) }
     var filterSheetOpen by remember { mutableStateOf(false) }
 
     var queryInput by remember { mutableStateOf("") }
@@ -138,8 +148,15 @@ fun DiscoverScreen(
         null -> null
     }
 
-    val pagingFlow = remember(debouncedQuery, titleTypeFilter, selectedGenre, selectedSort, catalogRepository) {
-        if (semanticMode) emptyFlow<PagingData<CatalogItem>>()
+    // ADR 0009 task 10: the "New & Upcoming" filter swaps the paging source
+    // to the synced TMDB feed tables (a separate source - CatalogPagingSource
+    // pages the bundled catalog.db and structurally can't cross databases in
+    // one query). Semantic search and the bundled catalog stay as-is.
+    val syncedMode = discoverSource == DiscoverSource.NEW_AND_UPCOMING &&
+        syncedCatalogDao != null && !semanticMode
+
+    val pagingFlow = remember(debouncedQuery, titleTypeFilter, selectedGenre, selectedSort, catalogRepository, discoverSource, syncedCatalogDao, semanticMode) {
+        if (syncedMode || semanticMode) emptyFlow<PagingData<CatalogItem>>()
         else catalogRepository?.pagedItems(
             query = debouncedQuery,
             titleType = titleTypeFilter,
@@ -148,6 +165,19 @@ fun DiscoverScreen(
         ) ?: emptyFlow<PagingData<CatalogItem>>()
     }
     val items: LazyPagingItems<CatalogItem> = pagingFlow.collectAsLazyPagingItems()
+
+    val syncedPagingFlow = remember(discoverSource, syncedCatalogDao, semanticMode) {
+        val dao = syncedCatalogDao
+        if (dao != null && discoverSource == DiscoverSource.NEW_AND_UPCOMING && !semanticMode) {
+            Pager(
+                config = PagingConfig(pageSize = 40, initialLoadSize = 40, prefetchDistance = 40),
+                pagingSourceFactory = { SyncedCatalogPagingSource(dao) },
+            ).flow
+        } else {
+            emptyFlow<PagingData<SyncedCatalogItem>>()
+        }
+    }
+    val syncedItems: LazyPagingItems<SyncedCatalogItem> = syncedPagingFlow.collectAsLazyPagingItems()
     val activeFilterCount = listOfNotNull(selectedGenre).size
 
     Box(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
@@ -182,13 +212,26 @@ fun DiscoverScreen(
                 FilterButton(count = activeFilterCount, onClick = { filterSheetOpen = true })
                 Spacer(modifier = Modifier.width(8.dp))
                 ActiveFilterChip(label = selectedSort.label, onRemove = null)
+                if (discoverSource == DiscoverSource.NEW_AND_UPCOMING) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ActiveFilterChip(label = discoverSource.label, onRemove = { discoverSource = DiscoverSource.ALL })
+                }
                 if (selectedGenre != null) {
                     Spacer(modifier = Modifier.width(8.dp))
                     ActiveFilterChip(label = selectedGenre ?: "", onRemove = { selectedGenre = null })
                 }
             }
 
-            if (semanticResults != null) {
+            if (syncedMode) {
+                LazyColumn {
+                    items(count = syncedItems.itemCount, key = syncedItems.itemKey { it.id }) { index ->
+                        val item = syncedItems[index]
+                        if (item != null) {
+                            SyncedDiscoverRow(item = item, onAdd = { onAdd(item.toCatalogItem()) })
+                        }
+                    }
+                }
+            } else if (semanticResults != null) {
                 LazyColumn {
                     items(items = semanticResults!!, key = { it.tconst }) { item ->
                         DiscoverRow(item = item, onAdd = { onAdd(item) })
@@ -208,25 +251,45 @@ fun DiscoverScreen(
 
         var pendingGenre by remember(selectedGenre) { mutableStateOf(selectedGenre) }
         var pendingSort by remember(selectedSort) { mutableStateOf(selectedSort) }
+        var pendingDiscoverSource by remember(discoverSource) { mutableStateOf(discoverSource) }
         FilterSidePanel(
             visible = filterSheetOpen,
             onDismiss = { filterSheetOpen = false },
             onClear = {
                 pendingGenre = null
                 pendingSort = CatalogSort.MOST_VOTED
+                pendingDiscoverSource = DiscoverSource.ALL
                 selectedGenre = null
                 selectedSort = CatalogSort.MOST_VOTED
+                discoverSource = DiscoverSource.ALL
                 filterSheetOpen = false
             },
             onApply = {
                 selectedGenre = pendingGenre
                 selectedSort = pendingSort
+                discoverSource = pendingDiscoverSource
                 filterSheetOpen = false
             },
             tabLabels = listOf("Filters", "Sort"),
         ) { tab ->
             LazyColumn {
                 if (tab == 0) {
+                    // Source filter (ADR 0009 task 10): synced TMDB feed
+                    // tables as a distinct paging source, not a sort on the
+                    // bundled catalog - lives at the top of the Filters tab.
+                    item {
+                        SelectableListRow(
+                            label = DiscoverSource.NEW_AND_UPCOMING.label,
+                            selected = pendingDiscoverSource == DiscoverSource.NEW_AND_UPCOMING,
+                            onClick = {
+                                pendingDiscoverSource = if (pendingDiscoverSource == DiscoverSource.NEW_AND_UPCOMING) {
+                                    DiscoverSource.ALL
+                                } else {
+                                    DiscoverSource.NEW_AND_UPCOMING
+                                }
+                            },
+                        )
+                    }
                     items(IMDB_GENRES) { genreName ->
                         SelectableListRow(
                             label = genreName,
@@ -290,3 +353,64 @@ private fun DiscoverRow(item: CatalogItem, onAdd: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun SyncedDiscoverRow(item: SyncedCatalogItem, onAdd: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp, 66.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (item.posterUrl != null) {
+                AsyncImage(
+                    model = item.posterUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(Icons.Filled.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(item.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                Spacer(modifier = Modifier.width(8.dp))
+                Tag(if (item.mediaType == "tv") "TV" else "Movie")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                item.releaseDate?.let {
+                    Text(it.take(4), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        IconButton(onClick = onAdd) {
+            Icon(Icons.Filled.Add, contentDescription = "Add ${item.title} to library")
+        }
+    }
+}
+
+/**
+ * Maps a synced feed row onto the CatalogItem vocabulary so the existing add
+ * flow (MainActivity's onAdd → resolveMatch(title, mediaType)) works
+ * unchanged - "tvSeries"/"movie" titleType is the mapping MainActivity's
+ * click handler already switches on.
+ */
+private fun SyncedCatalogItem.toCatalogItem(): CatalogItem = CatalogItem(
+    tconst = "synced:$id",
+    title = title,
+    titleType = if (mediaType == "tv") "tvSeries" else "movie",
+    startYear = releaseDate?.take(4)?.toIntOrNull(),
+    genres = genres,
+    averageRating = null,
+    numVotes = null,
+    overview = overview,
+    runtimeMinutes = null,
+    posterUrl = posterUrl,
+)

@@ -6,6 +6,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import com.mofy.app.data.library.LibraryDao
+import com.mofy.app.data.library.buildFtsMatchQuery
 import com.mofy.app.data.tmdb.TMDB_IMAGE_BASE_URL
 import com.mofy.app.search.DefaultRrfRanker
 import com.mofy.app.search.FacetDecoder
@@ -87,8 +88,18 @@ class CatalogRepository(
         val ranker = DefaultRrfRanker()
         val fusedIds = ranker.fuse(embeddingRanks, keywordRanks, genreRanks, k = 60)
 
+        // --- Exact/prefix title boost ---
+        // RRF fuses *rank positions* from three similarity signals - none of
+        // them specially recognize "this document's title literally is (or
+        // starts with) the query." A direct title search (single- or multi-
+        // word) must surface that title first regardless of how the fused
+        // signals rank it, so it's resolved separately and prepended rather
+        // than fed into RRF as a fourth signal.
+        val exactTitleIds = exactTitleSearch(query, limit = 5)
+        val boostedIds = (exactTitleIds + fusedIds).distinct()
+
         // --- Fetch CatalogItem details for top results ---
-        val catalogResults = fetchByTconsts(fusedIds.take(50))
+        val catalogResults = fetchByTconsts(boostedIds.take(50))
 
         // --- Library items with embeddings (user-added titles) ---
         val libraryResults = libraryItemCatalogItems(queryVec)
@@ -151,14 +162,56 @@ class CatalogRepository(
     }
 
     private fun ftsSearch(query: String, limit: Int): List<String> {
-        val ftsQuery = query.trim().split(Regex("\\s+")).joinToString(" OR ") { "\"$it\"" }
+        // Shared with Library/CatalogPagingSource search (data/library/
+        // LibrarySearchQuery.kt) - AND-joined, unquoted-prefix, stopword-
+        // aware. Previously this built its own "word1" OR "word2" query,
+        // which (a) matched any document containing just one common word
+        // instead of requiring all query terms, and (b) quoted tokens,
+        // which silently disables prefix matching in FTS3/4.
+        val ftsQuery = buildFtsMatchQuery(query) ?: return emptyList()
         return try {
+            // catalog_fts is a CONTENTLESS FTS4 table (content='' - see
+            // ml/scripts/05_prepare_android_asset.py) - it stores only the
+            // inverted index, so it can never return tconst/title/overview
+            // via SELECT, only rowid. catalog_fts.rowid is deliberately
+            // built equal to catalog_items.rowid (same script), so the join
+            // must go through rowid, not tconst - `f.tconst` doesn't exist
+            // in any retrievable sense and joining on it always threw,
+            // silently caught below, meaning this track returned empty for
+            // every query until this fix.
             db.rawQuery(
                 "SELECT ci.tconst FROM catalog_fts f " +
-                    "JOIN catalog_items ci ON ci.tconst = f.tconst " +
+                    "JOIN catalog_items ci ON ci.rowid = f.rowid " +
                     "WHERE catalog_fts MATCH ? AND ci.numVotes >= 5000 " +
                     "ORDER BY ci.numVotes DESC LIMIT ?",
                 arrayOf(ftsQuery, limit.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0))
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Direct title lookup, independent of the FTS/embedding/genre tracks -
+     * exact match (case-insensitive) ranked before prefix match, each
+     * sub-ordered by popularity. No numVotes floor (unlike ftsSearch): an
+     * exact title typed by the user should surface even for an obscure
+     * title, not just popular ones.
+     */
+    private fun exactTitleSearch(query: String, limit: Int): List<String> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        return try {
+            db.rawQuery(
+                "SELECT tconst FROM catalog_items " +
+                    "WHERE title = ? COLLATE NOCASE OR title LIKE ? COLLATE NOCASE " +
+                    "ORDER BY (title = ? COLLATE NOCASE) DESC, numVotes DESC " +
+                    "LIMIT ?",
+                arrayOf(trimmed, "$trimmed%", trimmed, limit.toString()),
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) add(cursor.getString(0))

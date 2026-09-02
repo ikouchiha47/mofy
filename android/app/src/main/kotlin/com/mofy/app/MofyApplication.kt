@@ -1,6 +1,11 @@
 package com.mofy.app
 
 import android.app.Application
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.mofy.app.data.catalog.CatalogDatabase
 import com.mofy.app.data.catalog.CatalogPosterCache
 import com.mofy.app.data.catalog.CatalogRepository
@@ -10,11 +15,13 @@ import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.TmdbClient
 import com.mofy.app.watchtogether.signaling.SignalingSettings
 import com.mofy.app.watchtogether.webrtc.PeerConnectionFactoryHolder
+import com.mofy.app.workers.CatalogSyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
+import java.util.concurrent.TimeUnit
 
 class MofyApplication : Application() {
 
@@ -35,6 +42,20 @@ class MofyApplication : Application() {
         applicationScope.launch { genreRepository.ensureSynced() }
         applicationScope.launch { siteRepository.ensureSeeded() }
         applicationScope.launch { backfillCatalogPosters(database) }
+
+        // Periodic TMDB new-releases sync (ADR 0009) - ~14 days, network-
+        // constrained, KEEP (first enqueue wins; later launches don't reset
+        // the schedule). Distinct from the applicationScope.launch startup
+        // syncs above - WorkManager owns scheduling/deferral, not a raw
+        // coroutine. A manual "Refresh now" one-off is in Settings.
+        val syncRequest = PeriodicWorkRequestBuilder<CatalogSyncWorker>(14, TimeUnit.DAYS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "catalog_sync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            syncRequest,
+        )
 
         // One-time backfill of library_search/search_vocab for items saved
         // before those indexes existed.

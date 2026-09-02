@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.mofy.app.data.catalog.CatalogPosterCache
 import com.mofy.app.data.catalog.CatalogPosterCacheDao
+import com.mofy.app.data.catalog.SyncedCatalogItem
+import com.mofy.app.data.catalog.SyncedCatalogSearchEntity
 import com.mofy.app.data.sites.SiteDao
 import com.mofy.app.data.sites.TorrentSiteEntity
 import com.mofy.app.data.tmdb.GenreDao
@@ -23,10 +25,13 @@ import kotlinx.coroutines.Dispatchers
         TorrentSiteEntity::class,
         WatchProgress::class,
         CatalogPosterCache::class,
+        SyncedCatalogItem::class,
+        SyncedCatalogSearchEntity::class,
     ],
     // 15: imdbId index on library_items (schema hash fix).
-    version = 15,
-    exportSchema = false,
+    // 16: synced_catalog_items, synced_catalog_search (FTS4), synced_catalog_vec (vec0) for TMDB new-releases sync (ADR 0009).
+    version = 16,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
@@ -34,6 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun siteDao(): SiteDao
     abstract fun watchProgressDao(): WatchProgressDao
     abstract fun catalogPosterCacheDao(): CatalogPosterCacheDao
+    abstract fun syncedCatalogDao(): com.mofy.app.data.catalog.SyncedCatalogDao
+    abstract fun syncedCatalogSearchDao(): com.mofy.app.data.catalog.SyncedCatalogSearchDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -64,6 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                         addExtension("$nativeLibraryDir/libspellfix", "sqlite3_spellfix_init")
                     },
                 )
+                .addMigrations(Migrations.MIGRATION_15_16)
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build().also {
                     instance = it

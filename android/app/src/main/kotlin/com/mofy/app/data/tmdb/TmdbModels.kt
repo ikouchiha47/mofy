@@ -60,6 +60,10 @@ data class MediaResult(
     val overview: String,
     val posterPath: String?,
     val year: String?,
+    // Full ISO-8601 date (release_date for movies, first_air_date for TV),
+    // kept alongside the 4-char year for consumers that need the exact date
+    // (e.g. SyncedCatalogItem.releaseDate - ADR 0009).
+    val releaseDate: String?,
     val genreIds: List<Int>,
     val voteAverage: Double,
     val mediaType: MediaType,
@@ -80,6 +84,7 @@ fun TmdbResultDto.toMediaResult(mediaType: MediaType): MediaResult {
         overview = overview,
         posterPath = poster_path,
         year = (release_date ?: first_air_date)?.take(4),
+        releaseDate = release_date ?: first_air_date,
         genreIds = genre_ids,
         voteAverage = vote_average,
         mediaType = mediaType,

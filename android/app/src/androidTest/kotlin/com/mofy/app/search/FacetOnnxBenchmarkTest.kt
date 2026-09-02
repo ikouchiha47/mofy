@@ -5,12 +5,12 @@ import android.os.Debug
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.microsoft.onnxruntime.OnnxTensor
-import com.microsoft.onnxruntime.OrtEnvironment
-import com.microsoft.onnxruntime.OrtSession
-import com.microsoft.onnxruntime.OrtSession.Result
-import com.microsoft.onnxruntime.OrtSession.SessionOptions
-import com.microsoft.onnxruntime.OptLevel
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
+import ai.onnxruntime.OrtSession.Result
+import ai.onnxruntime.OrtSession.SessionOptions
+import ai.onnxruntime.OrtSession.SessionOptions.OptLevel
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assume
@@ -51,7 +51,7 @@ class FacetOnnxBenchmarkTest {
             "facet_model_int8.onnx" to "int8"
         )
 
-        val goldenQueries = loadGoldenQueries(modelsDir)
+        val goldenQueries = loadGoldenQueries(modelsDir!!)
         Assume.assumeTrue("Failed to load golden queries from golden_outputs.json", goldenQueries.isNotEmpty())
         println("Loaded ${goldenQueries.size} golden queries")
 
@@ -169,8 +169,10 @@ class FacetOnnxBenchmarkTest {
 
     private fun runSingleInference(session: OrtSession, inputIds: LongArray, attentionMask: LongArray) {
         val env = OrtEnvironment.getEnvironment()
-        val inputIdsTensor = OnnxTensor.createTensor(env, arrayOf(inputIds), longArrayOf(1L, 64L))
-        val attentionMaskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask), longArrayOf(1L, 64L))
+        // onnxruntime 1.21.0 dropped the long[][] createTensor overload -
+        // LongBuffer overload with the same [1, 64] shape preserves the input.
+        val inputIdsTensor = OnnxTensor.createTensor(env, java.nio.LongBuffer.wrap(inputIds), longArrayOf(1L, 64L))
+        val attentionMaskTensor = OnnxTensor.createTensor(env, java.nio.LongBuffer.wrap(attentionMask), longArrayOf(1L, 64L))
 
         try {
             val inputs = mapOf(
@@ -178,14 +180,15 @@ class FacetOnnxBenchmarkTest {
                 "attention_mask" to attentionMaskTensor
             )
             val results: OrtSession.Result = session.run(inputs)
-            // Consume all outputs to prevent optimization
-            for (i in 0 until results.size) {
-                val value = results.get(i).value
+            // Consume all outputs to prevent optimization (Result implements
+            // Iterable<Map.Entry<String, OnnxValue>>).
+            for (entry in results) {
+                val value = entry.value
                 // Touch the value to ensure inference isn't optimized away
                 if (value is Array<*>) {
-                    _ = value.size
+                    value.size
                 } else if (value is java.nio.Buffer) {
-                    _ = value.capacity()
+                    value.capacity()
                 }
             }
             results.close()
@@ -198,6 +201,6 @@ class FacetOnnxBenchmarkTest {
     private fun getPssKb(): Long {
         val memInfo = Debug.MemoryInfo()
         Debug.getMemoryInfo(memInfo)
-        return memInfo.totalPss
+        return memInfo.totalPss.toLong()
     }
 }

@@ -24,7 +24,12 @@ private const val MAX_SEQ_LEN = 256
 private const val EMBEDDING_DIM = 768
 private const val PROMPT_PREFIX = "task: search result | query: "
 
-class OnDeviceEmbedder(private val context: Context) {
+/** Embedding provider for on-device text → vector. Implemented by OnDeviceEmbedder; fakes in tests. */
+interface TextEmbedder {
+    suspend fun embed(text: String): FloatArray?
+}
+
+class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
 
     @Volatile private var interpreter: Interpreter? = null
     @Volatile private var tokenizer: HuggingFaceTokenizer? = null
@@ -61,7 +66,7 @@ class OnDeviceEmbedder(private val context: Context) {
 
     fun isReady(): Boolean = interpreter != null && tokenizer != null
 
-    suspend fun embed(text: String): FloatArray? = withContext(Dispatchers.IO) {
+    override suspend fun embed(text: String): FloatArray? = withContext(Dispatchers.IO) {
         val interp = interpreter ?: return@withContext null
         val tok = tokenizer ?: return@withContext null
         try {

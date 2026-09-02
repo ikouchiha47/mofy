@@ -40,6 +40,22 @@ interface TmdbApi {
 
     @GET("genre/tv/list")
     suspend fun genreListTv(): TmdbGenreListResponse
+
+    // Feed endpoints (ADR 0009) - new/upcoming releases surfaced on Home and
+    // Discover, synced periodically. Reuse TmdbSearchResponse/TmdbResultDto.
+    @GET("movie/upcoming")
+    suspend fun upcomingMovies(@Query("region") region: String, @Query("page") page: Int = 1): TmdbSearchResponse
+
+    @GET("movie/now_playing")
+    suspend fun nowPlayingMovies(@Query("region") region: String, @Query("page") page: Int = 1): TmdbSearchResponse
+
+    // Verified against TMDB's API reference: tv/on_the_air has no region param
+    // (unlike the movie feed endpoints - region is movie-only).
+    @GET("tv/on_the_air")
+    suspend fun onTheAirTv(@Query("page") page: Int = 1): TmdbSearchResponse
+
+    @GET("tv/airing_today")
+    suspend fun airingTodayTv(@Query("page") page: Int = 1): TmdbSearchResponse
 }
 
 @kotlinx.serialization.Serializable

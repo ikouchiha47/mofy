@@ -337,6 +337,7 @@ private fun MofyApp(
                     libraryDao = database.libraryDao(),
                     watchProgressDao = database.watchProgressDao(),
                     catalogRepository = catalogRepository,
+                    syncedCatalogDao = database.syncedCatalogDao(),
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
                     onCatalogItemClick = { item ->
                         val mediaType = if (item.titleType == "tvSeries") "TV" else "MOVIE"
@@ -368,6 +369,7 @@ private fun MofyApp(
                     catalogRepository = catalogRepository,
                     embedder = onDeviceEmbedder,
                     facetDecoder = modelFacetDecoder,
+                    syncedCatalogDao = database.syncedCatalogDao(),
                     onAdd = { catalogItem ->
                         // Catalog items are IMDb-only, never have a tmdbId - always
                         // resolve via text search + user confirmation (radio-select,

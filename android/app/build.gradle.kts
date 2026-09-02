@@ -36,6 +36,10 @@ android {
     namespace = "com.mofy.app"
     compileSdk = 36
 
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+
     defaultConfig {
         applicationId = "com.mofy.app"
         minSdk = 26
@@ -109,6 +113,7 @@ android {
         }
         getByName("androidTest") {
             kotlin.directories += "src/androidTest/kotlin"
+            assets.srcDirs("$projectDir/schemas")
         }
     }
 }
@@ -125,9 +130,13 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
 
+    // Periodic TMDB new-releases sync (ADR 0009) - deferrable ~14-day
+    // background job, the case WorkManager's docs describe it for.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
@@ -192,12 +201,17 @@ dependencies {
     // see) - integration smoke test only for now, real rubric TBD.
     testImplementation("com.lemonappdev:konsist:0.17.3")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
+    // Virtual-time delay control for the TMDB 429 retry tests (matches the
+    // coroutines version already on the classpath - 1.8.0).
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.21.0")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    testImplementation("androidx.room:room-testing:2.8.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
 
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.room:room-testing:2.8.1")
 }
 
 tasks.withType<Test> {

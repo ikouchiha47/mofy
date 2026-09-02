@@ -57,13 +57,11 @@ class CatalogRepository(
         val queryVec = embedder.embed(query)
 
         // --- Track B: embedding KNN via catalog_vec.db ---
-        // catalog_vec stores float[256] — truncate 768-dim output to first 256 dims (Matryoshka).
+        // OnDeviceEmbedder.embed() already returns MRL-truncated,
+        // renormalized 256-dim vectors matching catalog_vec's float[256].
         val embeddingRanks: Map<String, Int> = if (queryVec != null) {
             try {
-                val raw256 = queryVec.copyOf(256)
-                val norm = kotlin.math.sqrt(raw256.fold(0f) { acc, x -> acc + x * x })
-                val vec256 = if (norm == 0f) raw256 else FloatArray(256) { raw256[it] / norm }
-                VecDatabase.knn(context, vec256, SEMANTIC_K)
+                VecDatabase.knn(context, queryVec, SEMANTIC_K)
                     .mapIndexed { rank, (tconst, _) -> tconst to rank + 1 }
                     .toMap()
             } catch (e: Exception) {

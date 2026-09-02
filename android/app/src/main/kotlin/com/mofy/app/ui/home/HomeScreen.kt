@@ -45,6 +45,8 @@ import com.mofy.app.data.library.LibraryItem
 import com.mofy.app.data.library.WatchProgressDao
 import com.mofy.app.data.library.WatchProgressWithItem
 import kotlinx.coroutines.flow.emptyFlow
+import java.time.Instant
+import java.time.ZoneId
 
 private val HOME_GENRES = listOf("Action", "Drama", "Comedy", "Thriller", "Sci-Fi", "Horror")
 
@@ -137,7 +139,7 @@ fun HomeScreen(
 
         if (newAndUpcoming.isNotEmpty()) {
             item {
-                SectionHeader("New & Upcoming")
+                SectionHeader("Upcoming")
                 CatalogRow(newAndUpcoming, onCatalogItemClick)
             }
         }
@@ -316,7 +318,20 @@ private fun SyncedCatalogItem.toHomeCatalogItem(): CatalogItem = CatalogItem(
     tconst = "synced:$id",
     title = title,
     titleType = if (mediaType == "tv") "tvSeries" else "movie",
-    startYear = releaseDate?.take(4)?.toIntOrNull(),
+    // TMDB's on_the_air/airing_today feeds only return first_air_date (the
+    // show's original premiere), not a next-episode-air date - showing that
+    // as "the date" is misleading for a long-running series ("New &
+    // Upcoming" showing e.g. 1988). Only movies (upcoming/now_playing) have
+    // a releaseDate that's actually meaningful here.
+    // AIRING_TODAY's releaseDate is TMDB's first_air_date (the show's
+    // original premiere, e.g. 1988) - not "new". firstSeenEpochMillis
+    // (really "last synced at", see SyncedCatalogItem's doc) is the
+    // approximate signal for "still airing" instead.
+    startYear = if (kind == "AIRING_TODAY") {
+        Instant.ofEpochMilli(firstSeenEpochMillis).atZone(ZoneId.systemDefault()).year
+    } else {
+        releaseDate?.take(4)?.toIntOrNull()
+    },
     genres = genres,
     averageRating = null,
     numVotes = null,

@@ -3,13 +3,16 @@ package com.mofy.app.workers
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.mofy.app.data.catalog.ALL_KINDS
 import com.mofy.app.data.catalog.SyncedCatalogRepository
 import com.mofy.app.data.catalog.SyncedCatalogVecDao
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.tmdb.GenreRepository
+import com.mofy.app.data.tmdb.TmdbSettings
 import com.mofy.app.search.OnDeviceEmbedder
 import com.mofy.app.search.TextEmbedder
-import java.util.Locale
+
+const val KEY_SYNC_KINDS = "sync_kinds"
 
 /**
  * Periodic job (ADR 0009 task 7) that syncs TMDB's new/upcoming feed kinds
@@ -34,11 +37,12 @@ open class CatalogSyncWorker(
         // skips vec insert for those rows (row + FTS still sync).
         runCatching { embedder.init() }
         val repository = buildRepository(applicationContext, embedder)
-        val region = Locale.getDefault().country.ifEmpty { "US" }
+        val kinds = inputData.getStringArray(KEY_SYNC_KINDS)?.toSet() ?: ALL_KINDS
         return try {
-            repository.sync(region)
+            repository.sync(region = TmdbSettings.region(), kinds = kinds, timezone = TmdbSettings.timezone())
             Result.success()
         } catch (e: Exception) {
+            android.util.Log.e("CatalogSyncWorker", "sync() failed", e)
             Result.retry()
         }
     }

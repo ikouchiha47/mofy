@@ -24,6 +24,54 @@ class ModelDownloadRepository(
 ) {
     fun observeAll(): Flow<List<ModelDownloadState>> = dao.observeAll()
 
+    /**
+     * Writes a QUEUED row immediately, before any network call - a model
+     * group (e.g. "embeddinggemma") may need a small blocking pre-download
+     * (tokenizer.json/vocab.txt) before the big tracked file's
+     * ensureDownloaded() ever runs, which otherwise leaves Settings showing
+     * nothing for 40+ seconds even though work has genuinely started
+     * (confirmed on-device, not assumed - see ADR 0010 notes).
+     */
+    suspend fun markQueued(modelKey: String, url: String, dest: File) {
+        val existing = dao.get(modelKey)
+        if (existing?.status == ModelDownloadStatus.COMPLETE.name && dest.exists()) return
+        dao.upsert(
+            ModelDownloadState(
+                modelKey = modelKey,
+                status = ModelDownloadStatus.QUEUED.name,
+                url = url,
+                bytesDownloaded = 0L,
+                bytesTotal = 0L,
+                destPath = dest.absolutePath,
+                lastErrorMessage = null,
+                updatedAtEpochMillis = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    /**
+     * Compensating write for the small pre-download step (tokenizer.json/
+     * vocab.txt) - that step isn't tracked by ModelDownloadService, so its
+     * own failure needs its own explicit FAILED transition. Without this, a
+     * QUEUED row whose pre-download throws stays QUEUED forever: no Retry
+     * button (only renders for FAILED) and boot recovery (task 6) only
+     * catches stuck DOWNLOADING, not stuck QUEUED.
+     */
+    suspend fun markFailed(modelKey: String, url: String, dest: File, message: String?) {
+        dao.upsert(
+            ModelDownloadState(
+                modelKey = modelKey,
+                status = ModelDownloadStatus.FAILED.name,
+                url = url,
+                bytesDownloaded = 0L,
+                bytesTotal = 0L,
+                destPath = dest.absolutePath,
+                lastErrorMessage = message,
+                updatedAtEpochMillis = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     /** True if the file is ready (already complete, or this call downloaded it successfully). */
     suspend fun ensureDownloaded(modelKey: String, url: String, dest: File, title: String): Boolean {
         val existing = dao.get(modelKey)

@@ -40,8 +40,12 @@ class SyncedCatalogVecDao(private val database: RoomDatabase) {
          * too - confirmed by an actual "no such table: synced_catalog_vec"
          * failure, not assumed.
          */
+        // float[256], not 768 - matches catalog_vec's MRL-truncated
+        // dimension (see OnDeviceEmbedder's EMBEDDING_DIM) so the two vec
+        // tables can eventually be queried/merged together (ADR 0009 task
+        // 5 in project memory).
         const val CREATE_TABLE_SQL =
-            "CREATE VIRTUAL TABLE IF NOT EXISTS synced_catalog_vec USING vec0(embedding float[768])"
+            "CREATE VIRTUAL TABLE IF NOT EXISTS synced_catalog_vec USING vec0(embedding float[256])"
     }
 
     suspend fun insert(itemId: Long, embedding: FloatArray) {

@@ -102,23 +102,42 @@ fun DetailScreen(
     // entries have nothing to sync against.
     val tmdbRepository = remember { TmdbRepository() }
     var syncing by remember(current.id) { mutableStateOf(false) }
+    var syncingImage by remember(current.id) { mutableStateOf(false) }
     fun hasRequiredFieldsMissing(item: LibraryItem) =
         (item.posterPath.isNullOrBlank() && item.localPosterUri.isNullOrBlank()) ||
             item.year.isNullOrBlank() ||
             item.overview.isBlank()
 
+    // Catalog-originated rows (Home/Discover taps) have no tmdbId yet, only
+    // imdbId - resolves via TMDB's /find endpoint (zero ambiguity, no text
+    // search) before syncByTmdbId/syncImageOnly give up. Returns null (not
+    // a guess) if there's nothing to resolve by, or the lookup finds no match.
+    suspend fun resolveTmdbId(): Pair<Int, MediaType>? {
+        val existingTmdbId = current.tmdbId
+        val existingMediaType = current.mediaType?.let { MediaType.valueOf(it) }
+        if (existingTmdbId != null && existingMediaType != null) return existingTmdbId to existingMediaType
+        val imdbId = current.imdbId ?: return null
+        val found = when (val result = tmdbRepository.findByImdbId(imdbId)) {
+            is TmdbResult.Success -> result.data
+            is TmdbResult.Failure -> return null
+        }
+        return found.movie_results.firstOrNull()?.let { it.id to MediaType.MOVIE }
+            ?: found.tv_results.firstOrNull()?.let { it.id to MediaType.TV }
+    }
+
     // Returns true only on a real applied update - false covers both "no
-    // tmdbId to try" and "fetch failed/404", so callers can fall back to
-    // text-search resolution uniformly for either case.
+    // tmdbId/imdbId to resolve by" and "fetch failed/404", so callers can
+    // fall back to text-search resolution uniformly for either case.
     suspend fun syncByTmdbId(force: Boolean): Boolean {
-        val tmdbId = current.tmdbId ?: return false
-        val mediaType = current.mediaType?.let { MediaType.valueOf(it) } ?: return false
+        val (tmdbId, mediaType) = resolveTmdbId() ?: return false
         syncing = true
         val applied = when (val result = tmdbRepository.getDetail(tmdbId, mediaType)) {
             is TmdbResult.Success -> {
                 val fetched = result.data
                 libraryDao.update(
                     current.copy(
+                        tmdbId = tmdbId,
+                        mediaType = mediaType.name,
                         posterPath = if (force) fetched.posterPath ?: current.posterPath else current.posterPath ?: fetched.posterPath,
                         posterSource = if (fetched.posterPath != null) PosterSource.TMDB.name else current.posterSource,
                         year = if (force) fetched.year ?: current.year else current.year ?: fetched.year,
@@ -131,6 +150,33 @@ fun DetailScreen(
             is TmdbResult.Failure -> false
         }
         syncing = false
+        return applied
+    }
+
+    // Poster-only counterpart to syncByTmdbId, for the "Sync Image" tap
+    // target on the placeholder - fetches the same way but applies only
+    // posterPath, leaving overview/year untouched.
+    suspend fun syncImageOnly(): Boolean {
+        val (tmdbId, mediaType) = resolveTmdbId() ?: return false
+        syncingImage = true
+        val applied = when (val result = tmdbRepository.getDetail(tmdbId, mediaType)) {
+            is TmdbResult.Success -> {
+                val fetched = result.data
+                if (fetched.posterPath != null) {
+                    libraryDao.update(
+                        current.copy(
+                            tmdbId = tmdbId,
+                            mediaType = mediaType.name,
+                            posterPath = fetched.posterPath,
+                            posterSource = PosterSource.TMDB.name,
+                        ),
+                    )
+                    true
+                } else false
+            }
+            is TmdbResult.Failure -> false
+        }
+        syncingImage = false
         return applied
     }
 
@@ -158,24 +204,35 @@ fun DetailScreen(
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                 } else {
-                    // Plain placeholder, not an action affordance - the one
-                    // real "fix missing fields" control is the sync banner
-                    // below (single place, regardless of which field is
-                    // missing), not something implied by this box.
+                    // Tappable "Sync Image" - poster-only fetch, distinct
+                    // from the combined "Sync info" row below (which also
+                    // covers overview/year). Centered on the placeholder
+                    // itself so there's no ambiguity about what it fetches.
                     Box(
                         modifier = Modifier
                             .width(120.dp)
                             .aspectRatio(2f / 3f)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable(enabled = !syncingImage) {
+                                coroutineScope.launch { syncImageOnly() }
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            Icons.Filled.Movie,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(28.dp),
-                        )
+                        if (syncingImage) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Filled.Sync,
+                                contentDescription = "Sync image",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                 }

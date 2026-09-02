@@ -33,6 +33,10 @@ class TmdbRepository(private val api: TmdbApi = TmdbClient.api) {
         MediaType.TV -> getTvDetail(tmdbId)
     }
 
+    /** Resolves an IMDb id (catalog rows are IMDb-only) to a TMDB id, with zero ambiguity - no text search needed. */
+    suspend fun findByImdbId(imdbId: String): TmdbResult<TmdbFindResponse> =
+        safeCall { api.findByImdbId(imdbId) }
+
     // --- New/upcoming feed endpoints (ADR 0009) - rate-limit-aware ---
 
     suspend fun upcomingMovies(region: String): TmdbResult<List<MediaResult>> =
@@ -44,8 +48,11 @@ class TmdbRepository(private val api: TmdbApi = TmdbClient.api) {
     suspend fun onTheAirTv(): TmdbResult<List<MediaResult>> =
         safeCallWithRetry { api.onTheAirTv().results.map { it.toMediaResult(MediaType.TV) } }
 
-    suspend fun airingTodayTv(): TmdbResult<List<MediaResult>> =
-        safeCallWithRetry { api.airingTodayTv().results.map { it.toMediaResult(MediaType.TV) } }
+    suspend fun airingTodayTv(timezone: String): TmdbResult<List<MediaResult>> =
+        safeCallWithRetry { api.airingTodayTv(timezone).results.map { it.toMediaResult(MediaType.TV) } }
+
+    suspend fun configurationTimezones(): TmdbResult<List<TmdbTimezoneEntry>> =
+        safeCall { api.configurationTimezones() }
 
     /**
      * safeCall + retry on HTTP 429 (TMDB rate limit) with exponential backoff

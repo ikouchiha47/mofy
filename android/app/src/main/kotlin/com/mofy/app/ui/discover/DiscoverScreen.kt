@@ -79,6 +79,8 @@ import com.mofy.app.search.RuleBasedFacetDecoder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
 
 /**
  * Browses the bundled IMDb catalog (ml/data/catalog.db - see ml/README.md)
@@ -406,7 +408,17 @@ private fun SyncedCatalogItem.toCatalogItem(): CatalogItem = CatalogItem(
     tconst = "synced:$id",
     title = title,
     titleType = if (mediaType == "tv") "tvSeries" else "movie",
-    startYear = releaseDate?.take(4)?.toIntOrNull(),
+    // See HomeScreen's toHomeCatalogItem() - on_the_air/airing_today only
+    // give us first_air_date (premiere date), not a next-episode date;
+    // showing it here would be misleading for long-running shows.
+    // See HomeScreen's identical mapping for why AIRING_TODAY uses
+    // firstSeenEpochMillis (last-synced signal) instead of releaseDate
+    // (TMDB's first_air_date - the show's original premiere, not "new").
+    startYear = if (kind == "AIRING_TODAY") {
+        Instant.ofEpochMilli(firstSeenEpochMillis).atZone(ZoneId.systemDefault()).year
+    } else {
+        releaseDate?.take(4)?.toIntOrNull()
+    },
     genres = genres,
     averageRating = null,
     numVotes = null,

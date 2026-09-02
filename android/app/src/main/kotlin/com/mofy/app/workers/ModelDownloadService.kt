@@ -135,6 +135,15 @@ class ModelDownloadService : Service() {
             val total = (conn.contentLengthLong.coerceAtLeast(0L)) + startOffset
             var downloaded = startOffset
             var lastPct = -1
+            // Notification updates are throttled independently of DAO writes:
+            // Android rate-limits/sheds notify() calls per app (confirmed on
+            // device - "Package enqueue rate is 5.63... Shedding" - once that
+            // happens, even the final "Download complete" update can be
+            // dropped, leaving the tray stuck at a mid-transfer percentage
+            // forever). DAO writes aren't subject to that limit and stay on
+            // every 1% tick so Settings' progress stays fine-grained.
+            var lastNotifyAtMs = 0L
+            val notifyIntervalMs = 400L
 
             conn.inputStream.use { input ->
                 java.io.FileOutputStream(tmp, supportsResume).use { output ->
@@ -147,12 +156,6 @@ class ModelDownloadService : Service() {
                             val pct = (downloaded * 100 / total).toInt()
                             if (pct != lastPct) {
                                 lastPct = pct
-                                val dlMB = downloaded / 1_048_576
-                                val totalMB = total / 1_048_576
-                                nm.notify(
-                                    notifId,
-                                    builder.setProgress(100, pct, false).setContentText("$dlMB MB / $totalMB MB").build(),
-                                )
                                 dao.upsert(
                                     ModelDownloadState(
                                         modelKey = modelKey,
@@ -165,6 +168,16 @@ class ModelDownloadService : Service() {
                                         updatedAtEpochMillis = System.currentTimeMillis(),
                                     ),
                                 )
+                                val now = System.currentTimeMillis()
+                                if (now - lastNotifyAtMs >= notifyIntervalMs) {
+                                    lastNotifyAtMs = now
+                                    val dlMB = downloaded / 1_048_576
+                                    val totalMB = total / 1_048_576
+                                    nm.notify(
+                                        notifId,
+                                        builder.setProgress(100, pct, false).setContentText("$dlMB MB / $totalMB MB").build(),
+                                    )
+                                }
                             }
                         }
                     }

@@ -66,6 +66,24 @@ interface LibraryDao {
     @Query("SELECT * FROM library_items WHERE tmdbId = :tmdbId AND mediaType = :mediaType LIMIT 1")
     suspend fun getByTmdbMatch(tmdbId: Int, mediaType: String): LibraryItem?
 
+    @Query("SELECT * FROM library_items WHERE imdbId = :imdbId LIMIT 1")
+    suspend fun getByImdbId(imdbId: String): LibraryItem?
+
+    /**
+     * Tapping a catalog card (Home/Discover) needs a library row to open
+     * Detail against, but must NOT trigger a TMDB fetch itself - that's what
+     * Detail's own (manual, or by-id auto-heal) sync is for. Dedupes by
+     * imdbId (catalog rows have no tmdbId yet) so repeat taps reopen the
+     * same row instead of creating duplicates.
+     */
+    @Transaction
+    suspend fun openCatalogItem(incoming: LibraryItem): String {
+        val existing = incoming.imdbId?.let { getByImdbId(it) }
+        if (existing != null) return existing.id
+        upsert(incoming)
+        return incoming.id
+    }
+
     @Query("SELECT imdbId, posterPath, localPosterUri, posterSource FROM library_items WHERE imdbId IN (:imdbIds)")
     suspend fun getPostersByImdbIds(imdbIds: List<String>): List<LibraryPosterInfo>
 

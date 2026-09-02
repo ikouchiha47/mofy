@@ -55,7 +55,13 @@ interface TmdbApi {
     suspend fun onTheAirTv(@Query("page") page: Int = 1): TmdbSearchResponse
 
     @GET("tv/airing_today")
-    suspend fun airingTodayTv(@Query("page") page: Int = 1): TmdbSearchResponse
+    suspend fun airingTodayTv(@Query("timezone") timezone: String, @Query("page") page: Int = 1): TmdbSearchResponse
+
+    // Settings' timezone picker (region for movies normalizes to a zone
+    // entry's iso_3166_1 - some countries have multiple zones, e.g.
+    // Indonesia: Asia/Jakarta, Asia/Pontianak, Asia/Makassar, Asia/Jayapura).
+    @GET("configuration/timezones")
+    suspend fun configurationTimezones(): List<TmdbTimezoneEntry>
 }
 
 @kotlinx.serialization.Serializable
@@ -63,3 +69,6 @@ data class TmdbGenreListResponse(val genres: List<TmdbGenreDto>)
 
 @kotlinx.serialization.Serializable
 data class TmdbGenreDto(val id: Int, val name: String)
+
+@kotlinx.serialization.Serializable
+data class TmdbTimezoneEntry(val iso_3166_1: String, val zones: List<String>)

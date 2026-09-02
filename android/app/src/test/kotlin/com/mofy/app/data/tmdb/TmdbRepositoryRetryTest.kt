@@ -41,7 +41,8 @@ class TmdbRepositoryRetryTest {
         override suspend fun genreListTv(): TmdbGenreListResponse = throw UnsupportedOperationException()
         override suspend fun nowPlayingMovies(region: String, page: Int): TmdbSearchResponse = throw UnsupportedOperationException()
         override suspend fun onTheAirTv(page: Int): TmdbSearchResponse = throw UnsupportedOperationException()
-        override suspend fun airingTodayTv(page: Int): TmdbSearchResponse = throw UnsupportedOperationException()
+        override suspend fun airingTodayTv(timezone: String, page: Int): TmdbSearchResponse = throw UnsupportedOperationException()
+        override suspend fun configurationTimezones(): List<TmdbTimezoneEntry> = throw UnsupportedOperationException()
     }
 
     @Test

@@ -48,6 +48,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
             val vocabFile = File(context.filesDir, VOCAB_FILE)
             if (!vocabFile.exists()) {
                 Log.i(TAG, "Downloading vocab…")
+                downloadRepository.markQueued(MODEL_KEY, MODEL_URL, File(context.filesDir, MODEL_FILE))
                 downloader.download(VOCAB_URL, vocabFile)
             }
 
@@ -65,6 +66,10 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init ModelBasedFacetDecoder", e)
             (downloader as? HttpModelDownloader)?.cancelNotif()
+            // Compensating write - see OnDeviceEmbedder's identical catch
+            // block for why this is needed (QUEUED row would otherwise
+            // never transition to FAILED if the small vocab download itself throws).
+            downloadRepository.markFailed(MODEL_KEY, MODEL_URL, File(context.filesDir, MODEL_FILE), e.message ?: e.javaClass.simpleName)
             false
         }
     }

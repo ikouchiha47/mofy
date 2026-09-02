@@ -4,6 +4,7 @@ import com.mofy.app.data.library.LibraryItem
 import com.mofy.app.data.library.LibrarySource
 import com.mofy.app.data.library.PosterSource
 import com.mofy.app.data.tmdb.MediaType
+import com.mofy.app.data.tmdb.TMDB_IMAGE_BASE_URL
 import java.util.UUID
 
 /**
@@ -11,6 +12,10 @@ import java.util.UUID
  * ml/README.md). genresManual (not genreIds) carries the genre names
  * straight from IMDb's own genres column, same field ManualEntryScreen
  * uses for hand-typed genres - there's no TMDB genre-ID mapping to attach.
+ * posterUrl (if the catalog poster backfill already resolved one) is
+ * carried over as posterPath/posterSource=TMDB rather than dropped - a Home/
+ * Discover card that already shows an image shouldn't go blank on Detail
+ * just because there's no tmdbId yet to re-fetch it from.
  */
 fun CatalogItem.toLibraryItem(): LibraryItem = LibraryItem(
     id = UUID.randomUUID().toString(),
@@ -20,9 +25,9 @@ fun CatalogItem.toLibraryItem(): LibraryItem = LibraryItem(
     originalTitle = null,
     romanizedOriginalTitle = null,
     overview = overview,
-    posterPath = null,
+    posterPath = posterUrl?.removePrefix(TMDB_IMAGE_BASE_URL),
     localPosterUri = null,
-    posterSource = PosterSource.NONE.name,
+    posterSource = if (posterUrl != null) PosterSource.TMDB.name else PosterSource.NONE.name,
     year = startYear?.toString(),
     genreIds = "",
     genresManual = genres,

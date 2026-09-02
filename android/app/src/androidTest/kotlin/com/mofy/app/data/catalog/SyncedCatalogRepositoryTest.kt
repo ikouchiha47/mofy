@@ -46,8 +46,10 @@ class SyncedCatalogRepositoryTest {
         override suspend fun onTheAirTv(page: Int): TmdbSearchResponse =
             TmdbSearchResponse(page = 1, results = emptyList(), total_pages = 1, total_results = 0)
 
-        override suspend fun airingTodayTv(page: Int): TmdbSearchResponse =
+        override suspend fun airingTodayTv(timezone: String, page: Int): TmdbSearchResponse =
             TmdbSearchResponse(page = 1, results = emptyList(), total_pages = 1, total_results = 0)
+
+        override suspend fun configurationTimezones(): List<com.mofy.app.data.tmdb.TmdbTimezoneEntry> = emptyList()
 
         override suspend fun searchMovie(query: String): TmdbSearchResponse = throw UnsupportedOperationException()
         override suspend fun searchTv(query: String): TmdbSearchResponse = throw UnsupportedOperationException()
@@ -118,7 +120,7 @@ class SyncedCatalogRepositoryTest {
                 embedder = FakeTextEmbedder(),
             )
 
-            repo.sync("US")
+            repo.sync("US", timezone = "America/New_York")
 
             val dao = db.syncedCatalogDao()
             val all = dao.page(100, 0)
@@ -151,8 +153,8 @@ class SyncedCatalogRepositoryTest {
                 embedder = FakeTextEmbedder(),
             )
 
-            repo.sync("US")
-            repo.sync("US")
+            repo.sync("US", timezone = "America/New_York")
+            repo.sync("US", timezone = "America/New_York")
 
             val count = db.syncedCatalogDao().page(100, 0)
             assertEquals("dedupe must prevent duplicate rows", 2, count.size)

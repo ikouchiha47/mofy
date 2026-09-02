@@ -8,5 +8,5 @@ package com.mofy.app.data.catalog
  */
 enum class DiscoverSource(val label: String) {
     ALL("All"),
-    NEW_AND_UPCOMING("New & Upcoming"),
+    NEW_AND_UPCOMING("Upcoming"),
 }

@@ -25,7 +25,13 @@ private const val TOKENIZER_FILE = "embeddinggemma_tokenizer.json"
 private const val NOTIF_CHANNEL = "mofy_embed_dl"
 private const val NOTIF_ID = 9002
 private const val MAX_SEQ_LEN = 256
-private const val EMBEDDING_DIM = 768
+// Model's native output is 768-dim; truncated to 256 via Matryoshka
+// Representation Learning to match catalog_vec (ml/scripts/
+// phase09_embed_enriched.py's `DIM = 256`, SentenceTransformer's own
+// truncate_dim=256) - MRL guarantees the truncated prefix is still a valid
+// embedding, but only if you truncate BEFORE re-normalizing, not after.
+private const val MODEL_NATIVE_DIM = 768
+private const val EMBEDDING_DIM = 256
 private const val PROMPT_PREFIX = "task: search result | query: "
 
 /** Embedding provider for on-device text → vector. Implemented by OnDeviceEmbedder; fakes in tests. */
@@ -50,6 +56,7 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
             val tokenizerFile = File(context.filesDir, TOKENIZER_FILE)
             if (!tokenizerFile.exists()) {
                 Log.i(TAG, "Downloading tokenizer…")
+                downloadRepository.markQueued(MODEL_KEY, MODEL_URL, File(context.filesDir, MODEL_FILE))
                 downloader.download(TOKENIZER_URL, tokenizerFile)
             }
 
@@ -70,6 +77,11 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init OnDeviceEmbedder", e)
             (downloader as? HttpModelDownloader)?.cancelNotif()
+            // Compensating write: if this threw during the small tokenizer
+            // download (before ensureDownloaded ever ran), the row is still
+            // QUEUED - without this it stays QUEUED forever, invisible to
+            // both Settings' Retry button and boot recovery.
+            downloadRepository.markFailed(MODEL_KEY, MODEL_URL, File(context.filesDir, MODEL_FILE), e.message ?: e.javaClass.simpleName)
             false
         }
     }
@@ -99,7 +111,7 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
                     val buf = Array(1) { Array(outShape[1]) { FloatArray(outShape[2]) } }
                     interp.run(inputIds, buf)
                     // mean-pool real tokens → [dim]
-                    FloatArray(EMBEDDING_DIM) { dim ->
+                    FloatArray(MODEL_NATIVE_DIM) { dim ->
                         (0 until actualLen).sumOf { t -> buf[0][t][dim].toDouble() }.toFloat() / actualLen
                     }
                 }
@@ -111,13 +123,17 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
                 }
                 else -> {
                     // flat [dim]
-                    val buf = FloatArray(EMBEDDING_DIM)
+                    val buf = FloatArray(MODEL_NATIVE_DIM)
                     interp.run(inputIds, buf)
                     buf
                 }
             }
 
-            l2Normalize(raw)
+            // Truncate BEFORE normalizing - MRL's guarantee that the
+            // truncated prefix is a valid embedding only holds pre-norm;
+            // normalizing the full 768-dim vector first and slicing after
+            // would leave the 256-dim result with the wrong norm.
+            l2Normalize(raw.copyOf(EMBEDDING_DIM))
         } catch (e: Exception) {
             Log.e(TAG, "embed() failed", e)
             null

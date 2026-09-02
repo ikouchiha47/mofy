@@ -340,8 +340,12 @@ private fun MofyApp(
                     syncedCatalogDao = database.syncedCatalogDao(),
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
                     onCatalogItemClick = { item ->
-                        val mediaType = if (item.titleType == "tvSeries") "TV" else "MOVIE"
-                        navController.navigate(PushedRoute.resolveMatch(item.title, mediaType))
+                        // See Discover's onAdd above for why this opens
+                        // Detail directly instead of resolveMatch.
+                        coroutineScope.launch {
+                            val id = database.libraryDao().openCatalogItem(item.toLibraryItem())
+                            navController.navigate("detail/$id")
+                        }
                     },
                     onContinueWatching = { wp ->
                         navController.navigate("detail/${wp.libraryItemId}")
@@ -371,12 +375,16 @@ private fun MofyApp(
                     facetDecoder = modelFacetDecoder,
                     syncedCatalogDao = database.syncedCatalogDao(),
                     onAdd = { catalogItem ->
-                        // Catalog items are IMDb-only, never have a tmdbId - always
-                        // resolve via text search + user confirmation (radio-select,
-                        // not a blind first-result guess), same screen Detail's Sync
-                        // info falls back to. See RESOLVE_MATCH.
-                        val mediaType = if (catalogItem.titleType == "tvSeries") "TV" else "MOVIE"
-                        navController.navigate(PushedRoute.resolveMatch(catalogItem.title, mediaType))
+                        // Catalog items are IMDb-only, never have a tmdbId -
+                        // open Detail directly (openCatalogItem dedupes by
+                        // imdbId, no TMDB call). Detail's own Sync info/Sync
+                        // image resolve by imdbId (TMDB's /find endpoint,
+                        // zero ambiguity) and only fall back to text-search
+                        // Confirm Match (RESOLVE_MATCH) if that fails.
+                        coroutineScope.launch {
+                            val id = database.libraryDao().openCatalogItem(catalogItem.toLibraryItem())
+                            navController.navigate("detail/$id")
+                        }
                     },
                 )
             }

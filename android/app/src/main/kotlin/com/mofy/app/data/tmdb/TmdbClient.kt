@@ -17,8 +17,9 @@ private const val BASE_URL = "https://api.themoviedb.org/3/"
 object TmdbClient {
 
     private val authInterceptor = Interceptor { chain ->
+        val apiKey = TmdbSettings.apiKeyOverride() ?: BuildConfig.TMDB_API_KEY
         val request = chain.request().newBuilder()
-            .addHeader("Authorization", "Bearer ${BuildConfig.TMDB_API_KEY}")
+            .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Accept", "application/json")
             .build()
         chain.proceed(request)

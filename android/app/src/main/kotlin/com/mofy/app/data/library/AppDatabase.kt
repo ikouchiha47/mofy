@@ -4,11 +4,14 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.execSQL
 import com.mofy.app.data.catalog.CatalogPosterCache
 import com.mofy.app.data.catalog.CatalogPosterCacheDao
 import com.mofy.app.data.catalog.SyncedCatalogItem
 import com.mofy.app.data.catalog.SyncedCatalogSearchEntity
+import com.mofy.app.data.catalog.SyncedCatalogVecDao
 import com.mofy.app.data.models.ModelDownloadDao
 import com.mofy.app.data.models.ModelDownloadState
 import com.mofy.app.data.sites.SiteDao
@@ -77,6 +80,23 @@ abstract class AppDatabase : RoomDatabase() {
                     },
                 )
                 .addMigrations(Migrations.MIGRATION_15_16, Migrations.MIGRATION_16_17)
+                // synced_catalog_vec isn't a Room @Entity (vec0's float[768]
+                // column syntax has no Room-representable form), so it only
+                // ever gets created by MIGRATION_15_16's execSQL - but a
+                // fresh install never runs any Migration at all, Room just
+                // stamps out the schema straight from @Entity classes.
+                // Confirmed on a real device via logcat after a reinstall:
+                // "no such table: synced_catalog_vec" on every sync.
+                // onCreate() is Room's own hook for exactly this gap - fires
+                // only when the database is genuinely new, reuses the same
+                // CREATE_TABLE_SQL constant the migration already uses.
+                .addCallback(
+                    object : RoomDatabase.Callback() {
+                        override fun onCreate(connection: SQLiteConnection) {
+                            connection.execSQL(SyncedCatalogVecDao.CREATE_TABLE_SQL)
+                        }
+                    },
+                )
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build().also {
                     instance = it

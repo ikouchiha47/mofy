@@ -2,6 +2,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- ADR 0010: held only for the active duration of ModelDownloadService's
+         transfer - never acquired/held outside that. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- SAF pickers don't strictly require these, but some OEM file pickers
          and external player apps behave inconsistently without the app
          also holding read access - requested at runtime before Import/Link
@@ -37,6 +42,14 @@
                 <data android:scheme="mofy" android:host="wt" />
             </intent-filter>
         </activity>
+
+        <!-- ADR 0010: foreground service, mirrors LibreTorrent's pattern -
+             must survive screen-lock/backgrounding for large model
+             downloads (the 127MB ONNX facet model in particular). -->
+        <service
+            android:name=".workers.ModelDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 </manifest>

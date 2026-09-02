@@ -10,6 +10,7 @@ import com.mofy.app.data.catalog.CatalogDatabase
 import com.mofy.app.data.catalog.CatalogPosterCache
 import com.mofy.app.data.catalog.CatalogRepository
 import com.mofy.app.data.library.AppDatabase
+import com.mofy.app.data.models.ModelDownloadStatus
 import com.mofy.app.data.sites.SiteRepository
 import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.TmdbClient
@@ -42,6 +43,24 @@ class MofyApplication : Application() {
         applicationScope.launch { genreRepository.ensureSynced() }
         applicationScope.launch { siteRepository.ensureSeeded() }
         applicationScope.launch { backfillCatalogPosters(database) }
+
+        // ADR 0010 task 6: a row left DOWNLOADING means its
+        // ModelDownloadService died with the process (killed, crashed) -
+        // nothing is actually running to finish it. Mark it FAILED so
+        // Settings (task 7) can offer retry instead of showing a stuck
+        // "downloading" that will never progress.
+        applicationScope.launch {
+            val dao = database.modelDownloadDao()
+            dao.findByStatus(ModelDownloadStatus.DOWNLOADING.name).forEach { stuck ->
+                dao.upsert(
+                    stuck.copy(
+                        status = ModelDownloadStatus.FAILED.name,
+                        lastErrorMessage = "Interrupted (app was killed mid-download)",
+                        updatedAtEpochMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
 
         // Periodic TMDB new-releases sync (ADR 0009) - ~14 days, network-
         // constrained, KEEP (first enqueue wins; later launches don't reset

@@ -9,6 +9,8 @@ import com.mofy.app.data.catalog.CatalogPosterCache
 import com.mofy.app.data.catalog.CatalogPosterCacheDao
 import com.mofy.app.data.catalog.SyncedCatalogItem
 import com.mofy.app.data.catalog.SyncedCatalogSearchEntity
+import com.mofy.app.data.models.ModelDownloadDao
+import com.mofy.app.data.models.ModelDownloadState
 import com.mofy.app.data.sites.SiteDao
 import com.mofy.app.data.sites.TorrentSiteEntity
 import com.mofy.app.data.tmdb.GenreDao
@@ -27,10 +29,12 @@ import kotlinx.coroutines.Dispatchers
         CatalogPosterCache::class,
         SyncedCatalogItem::class,
         SyncedCatalogSearchEntity::class,
+        ModelDownloadState::class,
     ],
     // 15: imdbId index on library_items (schema hash fix).
     // 16: synced_catalog_items, synced_catalog_search (FTS4), synced_catalog_vec (vec0) for TMDB new-releases sync (ADR 0009).
-    version = 16,
+    // 17: model_download_state for foreground-service model downloads (ADR 0010 task 1).
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun catalogPosterCacheDao(): CatalogPosterCacheDao
     abstract fun syncedCatalogDao(): com.mofy.app.data.catalog.SyncedCatalogDao
     abstract fun syncedCatalogSearchDao(): com.mofy.app.data.catalog.SyncedCatalogSearchDao
+    abstract fun modelDownloadDao(): ModelDownloadDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -71,7 +76,7 @@ abstract class AppDatabase : RoomDatabase() {
                         addExtension("$nativeLibraryDir/libspellfix", "sqlite3_spellfix_init")
                     },
                 )
-                .addMigrations(Migrations.MIGRATION_15_16)
+                .addMigrations(Migrations.MIGRATION_15_16, Migrations.MIGRATION_16_17)
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build().also {
                     instance = it

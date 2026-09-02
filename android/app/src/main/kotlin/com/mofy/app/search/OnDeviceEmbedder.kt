@@ -3,12 +3,16 @@ package com.mofy.app.search
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer
 import android.content.Context
 import android.util.Log
+import com.mofy.app.data.library.AppDatabase
+import com.mofy.app.data.models.ModelDownloadRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.nio.ByteOrder
 import kotlin.math.sqrt
+
+private const val MODEL_KEY = "embeddinggemma"
 
 private const val TAG = "OnDeviceEmbedder"
 
@@ -34,6 +38,11 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
     @Volatile private var interpreter: Interpreter? = null
     @Volatile private var tokenizer: HuggingFaceTokenizer? = null
     private val downloader: ModelDownloader = HttpModelDownloader(context, NOTIF_CHANNEL, NOTIF_ID)
+    // The large model file (below) goes through ModelDownloadService via
+    // this repository - a foreground service + wakelock that survives
+    // backgrounding (ADR 0010), unlike the small tokenizer file above,
+    // which stays on the plain in-process download.
+    private val downloadRepository = ModelDownloadRepository(context, AppDatabase.get(context).modelDownloadDao())
 
     suspend fun init(): Boolean = withContext(Dispatchers.IO) {
         if (interpreter != null) return@withContext true
@@ -46,7 +55,8 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
 
             val modelFile = File(context.filesDir, MODEL_FILE)
             if (!modelFile.exists()) {
-                downloader.downloadWithProgress(MODEL_URL, modelFile, "Mofy – embedding model")
+                val ok = downloadRepository.ensureDownloaded(MODEL_KEY, MODEL_URL, modelFile, "Mofy – embedding model")
+                if (!ok) return@withContext false
             }
 
             tokenizer = HuggingFaceTokenizer.newInstance(tokenizerFile.toPath())

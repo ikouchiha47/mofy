@@ -64,4 +64,33 @@ class AppDatabaseMigrationTest {
             context.deleteDatabase(testDbName)
         }
     }
+
+    /** ADR 0010 task 1 acceptance: the 16 -> 17 migration creates model_download_state. */
+    @Test
+    fun migration16To17_createsModelDownloadState() {
+        val dbName = "migration-test-16-17"
+        val helper16to17 = MigrationTestHelper(
+            InstrumentationRegistry.getInstrumentation(),
+            File(context.getDatabasePath(dbName).path),
+            driver,
+            AppDatabase::class,
+        )
+        try {
+            helper16to17.createDatabase(16)
+            val db = helper16to17.runMigrationsAndValidate(17, listOf(Migrations.MIGRATION_16_17))
+
+            val tables = mutableListOf<String>()
+            val stmt = db.prepare(
+                "SELECT name FROM sqlite_master WHERE name = 'model_download_state'",
+            )
+            try {
+                while (stmt.step()) tables += stmt.getText(0)
+            } finally {
+                stmt.close()
+            }
+            assertTrue("model_download_state missing, got $tables", "model_download_state" in tables)
+        } finally {
+            context.deleteDatabase(dbName)
+        }
+    }
 }

@@ -5,10 +5,14 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.util.Log
+import com.mofy.app.data.library.AppDatabase
+import com.mofy.app.data.models.ModelDownloadRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.LongBuffer
+
+private const val MODEL_KEY = "distilbert-onnx"
 
 private const val TAG = "ModelBasedFacetDecoder"
 private const val MODEL_FILE = "facet_model_fp16.onnx"
@@ -36,6 +40,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
     private val fallback = RuleBasedFacetDecoder()
     private val env = OrtEnvironment.getEnvironment()
     private val downloader: ModelDownloader = HttpModelDownloader(context, NOTIF_CHANNEL, NOTIF_ID)
+    private val downloadRepository = ModelDownloadRepository(context, AppDatabase.get(context).modelDownloadDao())
 
     suspend fun init(): Boolean = withContext(Dispatchers.IO) {
         if (session != null) return@withContext true
@@ -48,7 +53,8 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
 
             val modelFile = File(context.filesDir, MODEL_FILE)
             if (!modelFile.exists()) {
-                downloader.downloadWithProgress(MODEL_URL, modelFile, "Mofy – smart search model")
+                val ok = downloadRepository.ensureDownloaded(MODEL_KEY, MODEL_URL, modelFile, "Mofy – smart search model")
+                if (!ok) return@withContext false
             }
 
             tokenizer = WordPieceTokenizer(vocabFile.readLines())

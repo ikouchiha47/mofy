@@ -51,4 +51,22 @@ object Migrations {
             connection.execSQL(SyncedCatalogVecDao.CREATE_TABLE_SQL)
         }
     }
+
+    // 16 -> 17 DDL copied verbatim from app/schemas/.../17.json (ADR 0010 task 1).
+    val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS `model_download_state` (" +
+                    "`modelKey` TEXT NOT NULL, " +
+                    "`status` TEXT NOT NULL, " +
+                    "`url` TEXT NOT NULL, " +
+                    "`bytesDownloaded` INTEGER NOT NULL, " +
+                    "`bytesTotal` INTEGER NOT NULL, " +
+                    "`destPath` TEXT NOT NULL, " +
+                    "`lastErrorMessage` TEXT, " +
+                    "`updatedAtEpochMillis` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`modelKey`))",
+            )
+        }
+    }
 }

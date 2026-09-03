@@ -44,6 +44,10 @@ object PushedRoute {
     const val WT_SESSION = "watch_together/session"
     const val WT_SCAN = "watch_together/scan"
 
+    // In-app VLC playback for a single local/content file, no Watch
+    // Together session - see SoloPlayerScreen's doc comment.
+    const val SOLO_PLAY = "solo_play/{uri}"
+
     fun discover(source: String = "ALL", sort: String = "MOST_VOTED", type: String = "ANY") =
         "discover/$source/$sort/$type"
     fun editSite(siteName: String) = "edit_site/$siteName"
@@ -51,4 +55,5 @@ object PushedRoute {
     fun resolveMatch(title: String, mediaType: String, existingItemId: String = "none") =
         "resolve_match/${java.net.URLEncoder.encode(title, "UTF-8")}/$mediaType/$existingItemId"
     fun watchTogetherCreate(libraryItemId: String) = "watch_together/create/$libraryItemId"
+    fun soloPlay(uri: String) = "solo_play/${java.net.URLEncoder.encode(uri, "UTF-8")}"
 }

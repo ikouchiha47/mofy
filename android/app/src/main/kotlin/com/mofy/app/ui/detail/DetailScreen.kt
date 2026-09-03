@@ -62,6 +62,12 @@ fun DetailScreen(
     genreRepository: GenreRepository,
     onSearchForTorrent: (LibraryItem) -> Unit,
     onLink: (LibraryItem) -> Unit,
+    // In-app VLC playback (SoloPlayerScreen), not an external ACTION_VIEW
+    // handoff - see SoloPlayerScreen's doc comment for why that was the
+    // real cause of "Can't play this file" (confirmed via a real logcat
+    // capture, not assumed): our own code never threw, an external app
+    // launched, opened, and failed on the SAF content:// URI on its own.
+    onPlay: (String) -> Unit = {},
     // Sync info's fallback when there's no tmdbId to fetch by, or the fetch
     // 404s/fails - hands off to RESOLVE_MATCH (text search + user-confirmed
     // radio-select), not a silent guess. See MainActivity.
@@ -352,19 +358,7 @@ fun DetailScreen(
                 )
             }
             Button(
-                onClick = {
-                    val link = activeLink
-                    if (link != null) {
-                        val playIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                            setDataAndType(android.net.Uri.parse(link.movieUri), "video/*")
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        runCatching { context.startActivity(playIntent) }
-                            .onFailure {
-                                android.widget.Toast.makeText(context, "No app can play this file", android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                    }
-                },
+                onClick = { activeLink?.let { onPlay(it.movieUri) } },
                 enabled = isLinked,
                 shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth().padding(top = 14.dp),

@@ -296,7 +296,7 @@ private fun TrackChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-private fun formatMs(ms: Long): String {
+internal fun formatMs(ms: Long): String {
     val totalSeconds = ms / 1000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60

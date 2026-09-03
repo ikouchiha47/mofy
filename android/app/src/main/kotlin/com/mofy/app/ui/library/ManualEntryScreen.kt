@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import coil3.compose.AsyncImage
 import com.mofy.app.data.library.LibraryItem
 import com.mofy.app.data.library.LibrarySource
@@ -61,14 +63,20 @@ import kotlinx.coroutines.launch
 fun ManualEntryScreen(
     contentPadding: PaddingValues,
     onSave: (LibraryItem, fileUrl: String?) -> Unit,
+    // Carried over from Import's "Can't find it? Enter details manually"
+    // link - the filename-derived guess and the file you already picked
+    // there, so neither has to be redone from scratch on this screen.
+    initialTitle: String = "",
+    initialFileUrl: String? = null,
+    initialMediaType: MediaType = MediaType.MOVIE,
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val tmdbRepository = remember { TmdbRepository() }
 
-    var title by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(initialTitle) }
     var year by remember { mutableStateOf("") }
-    var mediaType by remember { mutableStateOf(MediaType.MOVIE) }
+    var mediaType by remember { mutableStateOf(initialMediaType) }
     var genresText by remember { mutableStateOf("") }
     var overview by remember { mutableStateOf("") }
 
@@ -77,7 +85,14 @@ fun ManualEntryScreen(
     var localPosterUri by remember { mutableStateOf<Uri?>(null) }
     var posterSource by remember { mutableStateOf(PosterSource.NONE) }
 
-    var fileUrl by remember { mutableStateOf("") }
+    // A picked file's display name (for showing what's selected) - the raw
+    // fileUrl (a content:// URI, not a path) is what actually gets saved,
+    // see the Save button below.
+    var fileUrl by remember { mutableStateOf(initialFileUrl ?: "") }
+    var fileDisplayName by remember {
+        mutableStateOf(initialFileUrl?.let { runCatching { DocumentFile.fromSingleUri(context, Uri.parse(it))?.name }.getOrNull() })
+    }
+    var folderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
 
     var posterSearchResults by remember { mutableStateOf<List<MediaResult>>(emptyList()) }
     var posterSearchLoading by remember { mutableStateOf(false) }
@@ -91,6 +106,45 @@ fun ManualEntryScreen(
         posterUrl = uri.toString()
         posterSource = PosterSource.UPLOADED
         posterSearchResults = emptyList()
+    }
+
+    // Same SAF pattern as LinkScreen's Import flow - a raw typed filesystem
+    // path (the old "File URL" text field) doesn't work with scoped
+    // storage on modern Android anyway, so this wasn't just a UX rough
+    // edge, it was largely non-functional outside a handful of legacy paths.
+    //
+    // The picked content:// uri is NOT kept as fileUrl - confirmed on a real
+    // device that DownloadStorageProvider's "raw:" documents reject reads
+    // (openFileDescriptor AND openInputStream) once this picker callback has
+    // returned, regardless of takePersistableUriPermission - this provider
+    // doesn't honor the normal persisted-grants table for its raw:
+    // children. The access this callback has right now is resolved to a
+    // stable playable uri immediately, while it's still valid:
+    // com.mofy.app.playback.resolvePlayableUri first tries MediaStore (the
+    // uri real media apps use for Downloads/gallery files, which
+    // READ_MEDIA_VIDEO covers reliably), falling back to copying the bytes
+    // into app-private storage for a file MediaStore hasn't indexed yet.
+    val pickVideoFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val pickedName = DocumentFile.fromSingleUri(context, uri)?.name
+        folderFiles = emptyList()
+        fileDisplayName = pickedName
+        fileUrl = ""
+        coroutineScope.launch {
+            fileUrl = com.mofy.app.playback.resolvePlayableUri(context, uri, pickedName)
+        }
+    }
+    val pickVideoFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+        treeUri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(treeUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        fileUrl = ""
+        fileDisplayName = null
+        folderFiles = DocumentFile.fromTreeUri(context, treeUri)?.listFiles()?.filter { it.isFile }.orEmpty()
     }
 
     Column(
@@ -223,13 +277,78 @@ fun ManualEntryScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
         )
 
-        OutlinedTextField(
-            value = fileUrl,
-            onValueChange = { fileUrl = it },
-            label = { Text("File URL (optional)") },
-            placeholder = { Text("/sdcard/Movies/movie.mp4") },
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        Text(
+            "Video file (optional)",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
         )
+        if (fileUrl.isNotBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(12.dp),
+            ) {
+                // fileDisplayName can fail to resolve (name query returning
+                // null, a URI shape DocumentFile.fromSingleUri doesn't
+                // recognize) without fileUrl itself being unset - gating
+                // this row on fileUrl (not fileDisplayName) is what fixes
+                // that; "Selected file" covers the case fileDisplayName
+                // never resolved instead of silently falling through to the
+                // picker buttons while a file is actually already chosen.
+                Text(fileDisplayName ?: "Selected file", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                OutlinedButton(
+                    onClick = { fileUrl = ""; fileDisplayName = null },
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Text("Change")
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = { pickVideoFile.launch(arrayOf("video/*")) },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Import single video file")
+                }
+                OutlinedButton(
+                    onClick = { pickVideoFolder.launch(null) },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Connect to directory")
+                }
+            }
+            if (folderFiles.isNotEmpty()) {
+                Text(
+                    "Pick a file",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+                )
+                LazyColumn(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+                    items(folderFiles) { file ->
+                        Text(
+                            file.name ?: "unknown",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    fileUrl = file.uri.toString()
+                                    fileDisplayName = file.name
+                                    folderFiles = emptyList()
+                                }
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
         Text(
             "If set, this file is linked and activated immediately - useful for manual testing (e.g. Watch Together) without a separate Link step.",
             style = MaterialTheme.typography.bodySmall,

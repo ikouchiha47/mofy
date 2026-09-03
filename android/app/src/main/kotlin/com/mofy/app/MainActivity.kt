@@ -644,6 +644,9 @@ private fun MofyApp(
                 if (showManualEntry) {
                     com.mofy.app.ui.library.ManualEntryScreen(
                         contentPadding = contentPadding,
+                        initialTitle = title,
+                        initialFileUrl = importUri,
+                        initialMediaType = importMediaType,
                         onSave = { libraryItem, fileUrl ->
                             coroutineScope.launch {
                                 database.libraryDao().upsert(libraryItem)
@@ -684,7 +687,12 @@ private fun MofyApp(
                         // Skips the TMDB round-trip when the title's already
                         // known not to be there - goes straight to manual
                         // entry with the guessed title + picked file's URI
-                        // carried over, not retyped.
+                        // carried over, not retyped. (The showManualEntry
+                        // branch above already existed for this - this
+                        // callback was the missing wire-up: ConfirmMatchScreen
+                        // only renders its "Enter details manually" link when
+                        // onManualEntry is non-null.)
+                        onManualEntry = { showManualEntry = true },
                         onConfirm = {},
                         onSaveToLibrary = { results ->
                             coroutineScope.launch {
@@ -752,6 +760,16 @@ private fun MofyApp(
                     },
                     activeWatchTogetherSession = if (sessionMatchesDetail) liveSessionForDetail else null,
                     onReturnToWatchTogetherSession = { navController.navigate(PushedRoute.WT_SESSION) },
+                    onPlay = { movieUri -> navController.navigate(PushedRoute.soloPlay(movieUri)) },
+                )
+            }
+            composable(PushedRoute.SOLO_PLAY) { backStack ->
+                val encodedUri = backStack.arguments?.getString("uri") ?: ""
+                val movieUri = java.net.URLDecoder.decode(encodedUri, "UTF-8")
+                com.mofy.app.ui.watchtogether.SoloPlayerScreen(
+                    contentPadding = contentPadding,
+                    mediaUri = movieUri,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(PushedRoute.LINK) { backStack ->

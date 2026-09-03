@@ -13,14 +13,42 @@ import org.videolan.libvlc.util.VLCVideoLayout
  * URI string; position and duration are milliseconds. Rendering the video
  * surface is a UI concern (Compose/`VLCVideoLayout`) and intentionally not
  * handled here.
+ *
+ * The uri passed in is expected to already be stable and playable - either
+ * a file:// path or a content://media/... MediaStore uri - resolved once at
+ * pick time by [resolvePlayableUri], not a raw SAF document uri. SAF
+ * document uris (from ManualEntryScreen/LinkScreen's file/folder pickers)
+ * are deliberately not handled here: DownloadStorageProvider's "raw:"
+ * documents specifically stop being readable once the picker activity that
+ * produced them has finished (confirmed on a real device: SecurityException
+ * demanding fresh ACTION_OPEN_DOCUMENT access, regardless of
+ * takePersistableUriPermission), so resolving them has to happen while the
+ * picker callback's access is still valid - too early for this class to do
+ * itself.
  */
 class VlcPlayerController(context: Context, mediaUri: String) : PlayerController {
 
     private val libVlc: LibVLC = LibVLC(context.applicationContext)
     private val player: MediaPlayer = MediaPlayer(libVlc)
+    private var openFd: android.os.ParcelFileDescriptor? = null
 
     init {
-        val media = Media(libVlc, Uri.parse(mediaUri))
+        // Attached before media/play so no early event (Opening,
+        // EncounteredError) is lost to a race - libVLC can start firing
+        // events on its own thread as soon as media is assigned, before
+        // this constructor even returns to the caller.
+        player.setEventListener { event ->
+            android.util.Log.d("VlcPlayerController", "event type=${event.type}")
+        }
+        val uri = Uri.parse(mediaUri)
+        val media = if (uri.scheme == "content") {
+            val fd = context.applicationContext.contentResolver.openFileDescriptor(uri, "r")
+                ?: error("Could not open file descriptor for $mediaUri")
+            openFd = fd
+            Media(libVlc, fd.fileDescriptor)
+        } else {
+            Media(libVlc, uri)
+        }
         try {
             player.media = media
         } finally {
@@ -69,6 +97,7 @@ class VlcPlayerController(context: Context, mediaUri: String) : PlayerController
     override fun release() {
         player.setMedia(null)
         player.release()
+        openFd?.close()
         libVlc.release()
     }
 

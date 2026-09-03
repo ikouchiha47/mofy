@@ -33,7 +33,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +68,7 @@ fun LinkScreen(
     onSaveFolderLink: (movie: Uri, subtitle: Uri?, subtitle2: Uri?) -> Unit,
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var folderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
     var folderPicked by remember { mutableStateOf(false) }
     var movieUri by remember { mutableStateOf<Uri?>(null) }
@@ -87,10 +90,20 @@ fun LinkScreen(
         }
     }
 
+    // The picked content:// uri is NOT passed straight to onSaveSingleFile -
+    // confirmed on a real device that DownloadStorageProvider's "raw:"
+    // documents reject reads once this callback has returned, regardless of
+    // persist(uri)'s takePersistableUriPermission - resolved to a uri that
+    // stays playable later instead, same as ManualEntryScreen's pickVideoFile
+    // (see com.mofy.app.playback.resolvePlayableUri's doc comment).
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         persist(uri)
-        onSaveSingleFile(uri)
+        val displayName = DocumentFile.fromSingleUri(context, uri)?.name
+        coroutineScope.launch {
+            val resolved = com.mofy.app.playback.resolvePlayableUri(context, uri, displayName)
+            onSaveSingleFile(Uri.parse(resolved))
+        }
     }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->

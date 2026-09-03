@@ -123,6 +123,26 @@ private const val ROUTE_CONFIRM_MATCH = "confirm_match"
 private const val ROUTE_IMPORT_CONFIRM = "import_confirm/{title}/{uri}"
 private const val ROUTE_DETAIL = "detail/{id}"
 
+/**
+ * Manual entries never went through the embedder at all before (only the
+ * TMDB-confirmed save path in ROUTE_RESOLVE_MATCH did), so a manually-added
+ * title - even with an overview typed - was FTS-searchable by title only
+ * (overview IS an FTS column, see LibraryDao.reindexSearch) and never
+ * showed up in semantic search. Only worth embedding with real overview
+ * text - title alone is too thin a signal for a meaningful embedding.
+ */
+private suspend fun embedIfHasOverview(
+    database: com.mofy.app.data.library.AppDatabase,
+    onDeviceEmbedder: com.mofy.app.search.OnDeviceEmbedder,
+    item: com.mofy.app.data.library.LibraryItem,
+) {
+    if (item.overview.isBlank()) return
+    if (!onDeviceEmbedder.init()) return
+    val vec = onDeviceEmbedder.embed("${item.title} ${item.overview}".trim()) ?: return
+    val blob = with(onDeviceEmbedder) { vec.toEmbeddingBlob() }
+    database.libraryDao().updateRaw(item.copy(embeddingBlob = blob))
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MofyApp(
@@ -477,7 +497,8 @@ private fun MofyApp(
             composable(PushedRoute.MANUAL_ENTRY_FORM) {
                 com.mofy.app.ui.library.ManualEntryScreen(
                     contentPadding = contentPadding,
-                    onSave = { libraryItem, fileUrl ->
+                    genreRepository = genreRepository,
+                    onSave = { libraryItem, fileUrl, subtitleUrl ->
                         coroutineScope.launch {
                             database.libraryDao().upsert(libraryItem)
                             if (fileUrl != null) {
@@ -486,13 +507,14 @@ private fun MofyApp(
                                         libraryItemKey = libraryItem.id,
                                         label = null,
                                         movieUri = fileUrl,
-                                        subtitleUri = null,
+                                        subtitleUri = subtitleUrl,
                                         subtitle2Uri = null,
                                         isActive = false,
                                         linkedAtEpochMillis = System.currentTimeMillis(),
                                     ),
                                 )
                             }
+                            embedIfHasOverview(database, onDeviceEmbedder, libraryItem)
                         }
                         android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
                         navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)
@@ -644,10 +666,11 @@ private fun MofyApp(
                 if (showManualEntry) {
                     com.mofy.app.ui.library.ManualEntryScreen(
                         contentPadding = contentPadding,
+                        genreRepository = genreRepository,
                         initialTitle = title,
                         initialFileUrl = importUri,
                         initialMediaType = importMediaType,
-                        onSave = { libraryItem, fileUrl ->
+                        onSave = { libraryItem, fileUrl, subtitleUrl ->
                             coroutineScope.launch {
                                 database.libraryDao().upsert(libraryItem)
                                 if (fileUrl != null) {
@@ -656,13 +679,14 @@ private fun MofyApp(
                                             libraryItemKey = libraryItem.id,
                                             label = null,
                                             movieUri = fileUrl,
-                                            subtitleUri = null,
+                                            subtitleUri = subtitleUrl,
                                             subtitle2Uri = null,
                                             isActive = false,
                                             linkedAtEpochMillis = System.currentTimeMillis(),
                                         ),
                                     )
                                 }
+                                embedIfHasOverview(database, onDeviceEmbedder, libraryItem)
                             }
                             android.widget.Toast.makeText(context, "Saved to library", android.widget.Toast.LENGTH_SHORT).show()
                             navController.popBackStack(TopLevelDestination.LIBRARY.route, inclusive = false)

@@ -1,10 +1,6 @@
 package com.mofy.app.ui.link
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,25 +25,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
 import com.mofy.app.data.library.LibraryLink
 import com.mofy.app.ui.icons.AppIcons
+import com.mofy.app.ui.storage.FileBrowserScreen
+import com.mofy.app.ui.storage.hasAllFilesAccess
+import com.mofy.app.ui.storage.requestAllFilesAccessIntent
+import java.io.File
 
 private enum class RoleTarget { MOVIE, SUBTITLE, SUBTITLE2 }
+private enum class BrowserMode { SINGLE_FILE, FOLDER }
 
 /**
  * Points Mofy at a file the user already downloaded elsewhere - never
@@ -58,6 +54,13 @@ private enum class RoleTarget { MOVIE, SUBTITLE, SUBTITLE2 }
  * first, with the pick-a-new-one UI always available below - re-opening
  * this screen for an already-linked item shouldn't look identical to a
  * never-linked one.
+ *
+ * Picking is backed by an in-app java.io.File browser (FileBrowserScreen)
+ * and MANAGE_EXTERNAL_STORAGE, not the SAF document picker - confirmed on
+ * a real device, repeatedly, that a SAF content:// uri stops being
+ * readable by Save time on this screen (SecurityException demanding fresh
+ * ACTION_OPEN_DOCUMENT access) for more than one SAF provider, regardless
+ * of takePersistableUriPermission.
  */
 @Composable
 fun LinkScreen(
@@ -68,50 +71,49 @@ fun LinkScreen(
     onSaveFolderLink: (movie: Uri, subtitle: Uri?, subtitle2: Uri?) -> Unit,
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    var folderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var folderFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var folderPicked by remember { mutableStateOf(false) }
-    var movieUri by remember { mutableStateOf<Uri?>(null) }
-    var subtitleUri by remember { mutableStateOf<Uri?>(null) }
-    var subtitle2Uri by remember { mutableStateOf<Uri?>(null) }
+    var movieFile by remember { mutableStateOf<File?>(null) }
+    var subtitleFile by remember { mutableStateOf<File?>(null) }
+    var subtitle2File by remember { mutableStateOf<File?>(null) }
     var pickingRole by remember { mutableStateOf<RoleTarget?>(null) }
+    var browserMode by remember { mutableStateOf<BrowserMode?>(null) }
+    var pendingBrowserMode by remember { mutableStateOf<BrowserMode?>(null) }
 
-    val mediaPermission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
-    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, mediaPermission) != PackageManager.PERMISSION_GRANTED) {
-            requestPermission.launch(mediaPermission)
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (hasAllFilesAccess()) browserMode = pendingBrowserMode
+        pendingBrowserMode = null
+    }
+    fun openBrowser(mode: BrowserMode) {
+        if (hasAllFilesAccess()) {
+            browserMode = mode
+        } else {
+            pendingBrowserMode = mode
+            allFilesAccessLauncher.launch(requestAllFilesAccessIntent(context))
         }
     }
 
-    fun persist(uri: Uri) {
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    if (browserMode != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { browserMode = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            FileBrowserScreen(
+                pickFolder = browserMode == BrowserMode.FOLDER,
+                onPick = { file ->
+                    when (browserMode) {
+                        BrowserMode.SINGLE_FILE -> onSaveSingleFile(Uri.fromFile(file))
+                        BrowserMode.FOLDER -> {
+                            folderFiles = file.listFiles()?.filter { it.isFile }?.sortedBy { it.name.lowercase() }.orEmpty()
+                            folderPicked = true
+                        }
+                        null -> Unit
+                    }
+                    browserMode = null
+                },
+                onCancel = { browserMode = null },
+            )
         }
-    }
-
-    // The picked content:// uri is NOT passed straight to onSaveSingleFile -
-    // confirmed on a real device that DownloadStorageProvider's "raw:"
-    // documents reject reads once this callback has returned, regardless of
-    // persist(uri)'s takePersistableUriPermission - resolved to a uri that
-    // stays playable later instead, same as ManualEntryScreen's pickVideoFile
-    // (see com.mofy.app.playback.resolvePlayableUri's doc comment).
-    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        persist(uri)
-        val displayName = DocumentFile.fromSingleUri(context, uri)?.name
-        coroutineScope.launch {
-            val resolved = com.mofy.app.playback.resolvePlayableUri(context, uri, displayName)
-            onSaveSingleFile(Uri.parse(resolved))
-        }
-    }
-
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-        if (treeUri == null) return@rememberLauncherForActivityResult
-        persist(treeUri)
-        val docFile = DocumentFile.fromTreeUri(context, treeUri)
-        folderFiles = docFile?.listFiles()?.filter { it.isFile }.orEmpty()
-        folderPicked = true
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
@@ -135,29 +137,28 @@ fun LinkScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 16.dp),
             )
-            PickRow(label = "Pick a single video file") { pickFile.launch(arrayOf("video/*")) }
-            PickRow(label = "Pick a folder", sub = "choose files inside next") { pickFolder.launch(null) }
+            PickRow(label = "Pick a single video file") { openBrowser(BrowserMode.SINGLE_FILE) }
+            PickRow(label = "Pick a folder", sub = "choose files inside next") { openBrowser(BrowserMode.FOLDER) }
         } else {
             Text("Folder contents", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(folderFiles) { file ->
-                    val name = file.name ?: "unknown"
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable(enabled = pickingRole != null) {
                                 when (pickingRole) {
-                                    RoleTarget.MOVIE -> movieUri = file.uri
-                                    RoleTarget.SUBTITLE -> subtitleUri = file.uri
-                                    RoleTarget.SUBTITLE2 -> subtitle2Uri = file.uri
+                                    RoleTarget.MOVIE -> movieFile = file
+                                    RoleTarget.SUBTITLE -> subtitleFile = file
+                                    RoleTarget.SUBTITLE2 -> subtitle2File = file
                                     null -> Unit
                                 }
                                 pickingRole = null
                             }
                             .padding(vertical = 10.dp),
                     ) {
-                        Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Text(file.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -165,20 +166,20 @@ fun LinkScreen(
             Text("Assign roles", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 12.dp))
             RoleRow(
                 label = "Movie file",
-                fileName = folderFiles.find { it.uri == movieUri }?.name,
+                fileName = movieFile?.name,
                 picking = pickingRole == RoleTarget.MOVIE,
                 onPick = { pickingRole = if (pickingRole == RoleTarget.MOVIE) null else RoleTarget.MOVIE },
             )
             RoleRow(
                 label = "Subtitles",
-                fileName = folderFiles.find { it.uri == subtitleUri }?.name,
+                fileName = subtitleFile?.name,
                 optional = true,
                 picking = pickingRole == RoleTarget.SUBTITLE,
                 onPick = { pickingRole = if (pickingRole == RoleTarget.SUBTITLE) null else RoleTarget.SUBTITLE },
             )
             RoleRow(
                 label = "Subtitles 2",
-                fileName = folderFiles.find { it.uri == subtitle2Uri }?.name,
+                fileName = subtitle2File?.name,
                 optional = true,
                 picking = pickingRole == RoleTarget.SUBTITLE2,
                 onPick = { pickingRole = if (pickingRole == RoleTarget.SUBTITLE2) null else RoleTarget.SUBTITLE2 },
@@ -186,13 +187,20 @@ fun LinkScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
                 OutlinedButton(
-                    onClick = { folderPicked = false; movieUri = null; subtitleUri = null; subtitle2Uri = null },
+                    onClick = { folderPicked = false; movieFile = null; subtitleFile = null; subtitle2File = null },
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.weight(1f),
                 ) { Text("Cancel") }
                 Button(
-                    onClick = { movieUri?.let { onSaveFolderLink(it, subtitleUri, subtitle2Uri) } },
-                    enabled = movieUri != null,
+                    onClick = {
+                        val movie = movieFile ?: return@Button
+                        onSaveFolderLink(
+                            Uri.fromFile(movie),
+                            subtitleFile?.let { Uri.fromFile(it) },
+                            subtitle2File?.let { Uri.fromFile(it) },
+                        )
+                    },
+                    enabled = movieFile != null,
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.weight(1f),
                 ) { Text("Save link") }

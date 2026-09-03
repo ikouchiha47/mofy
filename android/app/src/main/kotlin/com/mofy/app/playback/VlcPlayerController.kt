@@ -14,17 +14,12 @@ import org.videolan.libvlc.util.VLCVideoLayout
  * surface is a UI concern (Compose/`VLCVideoLayout`) and intentionally not
  * handled here.
  *
- * The uri passed in is expected to already be stable and playable - either
- * a file:// path or a content://media/... MediaStore uri - resolved once at
- * pick time by [resolvePlayableUri], not a raw SAF document uri. SAF
- * document uris (from ManualEntryScreen/LinkScreen's file/folder pickers)
- * are deliberately not handled here: DownloadStorageProvider's "raw:"
- * documents specifically stop being readable once the picker activity that
- * produced them has finished (confirmed on a real device: SecurityException
- * demanding fresh ACTION_OPEN_DOCUMENT access, regardless of
- * takePersistableUriPermission), so resolving them has to happen while the
- * picker callback's access is still valid - too early for this class to do
- * itself.
+ * The uri passed in is a plain file:// path - ManualEntryScreen/LinkScreen's
+ * video/subtitle picking (VideoAndSubtitlePicker) is backed by an in-app
+ * java.io.File browser and MANAGE_EXTERNAL_STORAGE, not the SAF document
+ * picker, so there's no content:// document uri to resolve here. The
+ * content:// branch below is kept only for any content:// uri that reaches
+ * this class from elsewhere (e.g. old library rows saved before this).
  */
 class VlcPlayerController(context: Context, mediaUri: String) : PlayerController {
 

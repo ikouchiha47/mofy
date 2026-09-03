@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,7 +40,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
 import coil3.compose.AsyncImage
 import com.mofy.app.data.library.LibraryItem
 import com.mofy.app.data.library.LibrarySource
@@ -50,6 +49,7 @@ import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.data.tmdb.TmdbRepository
 import com.mofy.app.data.tmdb.TmdbResult
 import com.mofy.app.ui.components.CategorySegmentedControl
+import com.mofy.app.ui.icons.AppIcons
 import java.util.UUID
 import kotlinx.coroutines.launch
 
@@ -62,7 +62,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ManualEntryScreen(
     contentPadding: PaddingValues,
-    onSave: (LibraryItem, fileUrl: String?) -> Unit,
+    onSave: (LibraryItem, fileUrl: String?, subtitleUrl: String?) -> Unit,
+    genreRepository: com.mofy.app.data.tmdb.GenreRepository,
     // Carried over from Import's "Can't find it? Enter details manually"
     // link - the filename-derived guess and the file you already picked
     // there, so neither has to be redone from scratch on this screen.
@@ -86,13 +87,17 @@ fun ManualEntryScreen(
     var posterSource by remember { mutableStateOf(PosterSource.NONE) }
 
     // A picked file's display name (for showing what's selected) - the raw
-    // fileUrl (a content:// URI, not a path) is what actually gets saved,
-    // see the Save button below.
+    // fileUrl (a file:// path) is what actually gets saved, see the Save
+    // button below.
     var fileUrl by remember { mutableStateOf(initialFileUrl ?: "") }
-    var fileDisplayName by remember {
-        mutableStateOf(initialFileUrl?.let { runCatching { DocumentFile.fromSingleUri(context, Uri.parse(it))?.name }.getOrNull() })
-    }
-    var folderFiles by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var fileDisplayName by remember { mutableStateOf(initialFileUrl?.substringAfterLast('/')) }
+    var subtitleUrl by remember { mutableStateOf<String?>(null) }
+    var subtitleDisplayName by remember { mutableStateOf<String?>(null) }
+    // True while `title` is just a filename guess - a fresh video pick may
+    // overwrite it (and clear overview/genres/poster along with it); false
+    // once you type your own title or confirm a TMDB match, so a later
+    // video pick leaves everything alone.
+    var titleIsGuess by remember { mutableStateOf(initialTitle.isBlank()) }
 
     var posterSearchResults by remember { mutableStateOf<List<MediaResult>>(emptyList()) }
     var posterSearchLoading by remember { mutableStateOf(false) }
@@ -108,44 +113,6 @@ fun ManualEntryScreen(
         posterSearchResults = emptyList()
     }
 
-    // Same SAF pattern as LinkScreen's Import flow - a raw typed filesystem
-    // path (the old "File URL" text field) doesn't work with scoped
-    // storage on modern Android anyway, so this wasn't just a UX rough
-    // edge, it was largely non-functional outside a handful of legacy paths.
-    //
-    // The picked content:// uri is NOT kept as fileUrl - confirmed on a real
-    // device that DownloadStorageProvider's "raw:" documents reject reads
-    // (openFileDescriptor AND openInputStream) once this picker callback has
-    // returned, regardless of takePersistableUriPermission - this provider
-    // doesn't honor the normal persisted-grants table for its raw:
-    // children. The access this callback has right now is resolved to a
-    // stable playable uri immediately, while it's still valid:
-    // com.mofy.app.playback.resolvePlayableUri first tries MediaStore (the
-    // uri real media apps use for Downloads/gallery files, which
-    // READ_MEDIA_VIDEO covers reliably), falling back to copying the bytes
-    // into app-private storage for a file MediaStore hasn't indexed yet.
-    val pickVideoFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val pickedName = DocumentFile.fromSingleUri(context, uri)?.name
-        folderFiles = emptyList()
-        fileDisplayName = pickedName
-        fileUrl = ""
-        coroutineScope.launch {
-            fileUrl = com.mofy.app.playback.resolvePlayableUri(context, uri, pickedName)
-        }
-    }
-    val pickVideoFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-        treeUri ?: return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(treeUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        fileUrl = ""
-        fileDisplayName = null
-        folderFiles = DocumentFile.fromTreeUri(context, treeUri)?.listFiles()?.filter { it.isFile }.orEmpty()
-    }
 
     Column(
         modifier = Modifier
@@ -173,15 +140,21 @@ fun ManualEntryScreen(
                             .width(110.dp)
                             .height(165.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { pickImage.launch(arrayOf("image/*")) },
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        Icon(
+                            AppIcons.Add,
+                            contentDescription = "Upload image",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Text(
                             "No poster yet",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -202,20 +175,14 @@ fun ManualEntryScreen(
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.width(110.dp).padding(top = 8.dp),
                 ) {
-                    Text("🔍 Search TMDB", style = MaterialTheme.typography.labelSmall)
-                }
-                OutlinedButton(
-                    onClick = { pickImage.launch(arrayOf("image/*")) },
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.width(110.dp).padding(top = 6.dp),
-                ) {
-                    Text("📁 Upload image", style = MaterialTheme.typography.labelSmall)
+                    Icon(AppIcons.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text("Tmdb", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 4.dp))
                 }
             }
             Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
                 OutlinedTextField(
                     value = title,
-                    onValueChange = { title = it },
+                    onValueChange = { title = it; titleIsGuess = false },
                     label = { Text("Title") },
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -257,6 +224,19 @@ fun ManualEntryScreen(
                                 posterPath = candidate.posterPath
                                 localPosterUri = null
                                 posterSource = PosterSource.TMDB
+                                // candidate already carries year/overview/
+                                // genreIds from the same TMDB search that
+                                // fetched the poster - filling these in too
+                                // is what makes tapping a poster act as a
+                                // real "confirm this match", not just a
+                                // poster swap.
+                                title = candidate.title
+                                titleIsGuess = false
+                                year = candidate.year ?: year
+                                overview = candidate.overview
+                                coroutineScope.launch {
+                                    genresText = genreRepository.resolveNames(candidate.genreIds).joinToString(", ")
+                                }
                             },
                     )
                 }
@@ -278,82 +258,43 @@ fun ManualEntryScreen(
         )
 
         Text(
-            "Video file (optional)",
+            "Video & subtitles (optional)",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
         )
-        if (fileUrl.isNotBlank()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(12.dp),
-            ) {
-                // fileDisplayName can fail to resolve (name query returning
-                // null, a URI shape DocumentFile.fromSingleUri doesn't
-                // recognize) without fileUrl itself being unset - gating
-                // this row on fileUrl (not fileDisplayName) is what fixes
-                // that; "Selected file" covers the case fileDisplayName
-                // never resolved instead of silently falling through to the
-                // picker buttons while a file is actually already chosen.
-                Text(fileDisplayName ?: "Selected file", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                OutlinedButton(
-                    onClick = { fileUrl = ""; fileDisplayName = null },
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Text("Change")
+        com.mofy.app.ui.storage.VideoAndSubtitlePicker(
+            fileUrl = fileUrl,
+            fileDisplayName = fileDisplayName,
+            subtitleUrl = subtitleUrl,
+            subtitleDisplayName = subtitleDisplayName,
+            onVideoPicked = { url, name ->
+                fileUrl = url
+                fileDisplayName = name
+                // titleIsGuess false means you typed a title or confirmed a
+                // TMDB match - a new video pick must not touch title or the
+                // metadata that came with it.
+                if (titleIsGuess) {
+                    title = com.mofy.app.data.library.guessTitleFromFileName(name)
+                    year = ""
+                    overview = ""
+                    genresText = ""
+                    posterUrl = null
+                    posterPath = null
+                    localPosterUri = null
+                    posterSource = PosterSource.NONE
                 }
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = { pickVideoFile.launch(arrayOf("video/*")) },
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Import single video file")
-                }
-                OutlinedButton(
-                    onClick = { pickVideoFolder.launch(null) },
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Connect to directory")
-                }
-            }
-            if (folderFiles.isNotEmpty()) {
-                Text(
-                    "Pick a file",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
-                )
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(160.dp)) {
-                    items(folderFiles) { file ->
-                        Text(
-                            file.name ?: "unknown",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    fileUrl = file.uri.toString()
-                                    fileDisplayName = file.name
-                                    folderFiles = emptyList()
-                                }
-                                .padding(vertical = 8.dp),
-                        )
-                    }
-                }
-            }
-        }
+            },
+            onVideoCleared = { fileUrl = ""; fileDisplayName = null },
+            onSubtitlePicked = { url, name -> subtitleUrl = url; subtitleDisplayName = name },
+            onSubtitleCleared = { subtitleUrl = null; subtitleDisplayName = null },
+        )
+
         Text(
             "If set, this file is linked and activated immediately - useful for manual testing (e.g. Watch Together) without a separate Link step.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 10.dp),
         )
 
         Text(
@@ -389,6 +330,7 @@ fun ManualEntryScreen(
                         feedback = null,
                     ),
                     fileUrl.trim().ifBlank { null },
+                    subtitleUrl?.trim()?.ifBlank { null },
                 )
             },
             enabled = title.isNotBlank(),

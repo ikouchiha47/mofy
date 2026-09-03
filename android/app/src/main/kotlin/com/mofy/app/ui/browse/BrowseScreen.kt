@@ -13,12 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -35,6 +29,7 @@ import com.mofy.app.data.sites.SiteRepository
 import com.mofy.app.data.sites.TorrentSite
 import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.ui.components.CategorySegmentedControl
+import com.mofy.app.ui.icons.AppIcons
 import kotlinx.coroutines.flow.emptyFlow
 
 /**
@@ -89,8 +84,8 @@ fun BrowseScreen(
                 ListItem(
                     headlineContent = { Text("Discover") },
                     supportingContent = { Text("Browse the bundled IMDb catalog") },
-                    leadingContent = { Icon(Icons.Filled.Explore, contentDescription = null) },
-                    trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
+                    leadingContent = { Icon(AppIcons.Explore, contentDescription = null) },
+                    trailingContent = { Icon(AppIcons.ChevronRight, contentDescription = null) },
                     modifier = Modifier.clickable(onClick = onDiscoverClick),
                 )
             }
@@ -114,7 +109,7 @@ fun BrowseScreen(
                 ListItem(
                     headlineContent = { Text("Add a site…") },
                     supportingContent = { Text("opens the same edit form") },
-                    leadingContent = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    leadingContent = { Icon(AppIcons.Add, contentDescription = null) },
                     modifier = Modifier.clickable { onEditSite(null) },
                 )
             }
@@ -144,7 +139,7 @@ private fun SearchContextBanner(
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = onClear) {
-                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                Icon(AppIcons.Close, contentDescription = "Clear search")
             }
         }
         if (context.alternateTitle != null) {
@@ -189,11 +184,11 @@ private fun SiteRow(site: TorrentSite, onClick: () -> Unit, onEditClick: () -> U
         trailingContent = {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Filled.Edit,
+                    AppIcons.Edit,
                     contentDescription = "Edit ${site.name}",
                     modifier = Modifier.clickable(onClick = onEditClick),
                 )
-                Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                Icon(AppIcons.ChevronRight, contentDescription = null)
             }
         },
     )

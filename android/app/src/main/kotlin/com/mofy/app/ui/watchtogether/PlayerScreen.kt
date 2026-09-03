@@ -13,13 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mofy.app.playback.PlayerController
 import com.mofy.app.playback.VlcPlayerController
+import com.mofy.app.ui.icons.AppIcons
 import com.mofy.app.watchtogether.WatchTogetherSession
 import kotlinx.coroutines.delay
 import org.videolan.libvlc.util.VLCVideoLayout
@@ -147,7 +141,7 @@ fun PlayerScreen(
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Icon(AppIcons.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
             Spacer(modifier = Modifier.width(12.dp))
             WatchingWithPill(
@@ -198,19 +192,19 @@ fun PlayerScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { currentSession.localSeek((uiPositionMs - SEEK_NUDGE_MS).coerceAtLeast(0L)) }) {
-                        Icon(Icons.Filled.Replay10, contentDescription = "Back 10 seconds", tint = Color.White)
+                        Icon(AppIcons.Replay10, contentDescription = "Back 10 seconds", tint = Color.White)
                     }
                     IconButton(
                         onClick = { if (uiIsPlaying) currentSession.localPause() else currentSession.localPlay() },
                     ) {
                         Icon(
-                            if (uiIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            if (uiIsPlaying) AppIcons.Pause else AppIcons.PlayArrow,
                             contentDescription = if (uiIsPlaying) "Pause" else "Play",
                             tint = Color.White,
                         )
                     }
                     IconButton(onClick = { currentSession.localSeek(uiPositionMs + SEEK_NUDGE_MS) }) {
-                        Icon(Icons.Filled.Forward10, contentDescription = "Forward 10 seconds", tint = Color.White)
+                        Icon(AppIcons.Forward10, contentDescription = "Forward 10 seconds", tint = Color.White)
                     }
                 }
                 Box(
@@ -221,7 +215,7 @@ fun PlayerScreen(
                         .clickable(onClick = onInvite),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.People, contentDescription = "Invite", tint = Color.White)
+                    Icon(AppIcons.People, contentDescription = "Invite", tint = Color.White)
                 }
             }
 

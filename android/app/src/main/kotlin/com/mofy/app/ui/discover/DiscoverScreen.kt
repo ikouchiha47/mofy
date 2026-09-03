@@ -18,13 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -71,6 +64,7 @@ import com.mofy.app.ui.components.FilterSidePanel
 import com.mofy.app.ui.components.SelectableListRow
 import com.mofy.app.ui.components.Tag
 import com.mofy.app.ui.components.TypeSegmentedControl
+import com.mofy.app.ui.icons.AppIcons
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.mofy.app.search.FacetDecoder
@@ -200,9 +194,9 @@ fun DiscoverScreen(
                 value = queryInput,
                 onValueChange = { queryInput = it },
                 placeholder = { Text("Search the catalog") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
                 trailingIcon = if (queryInput.isNotEmpty()) {
-                    { IconButton(onClick = { queryInput = ""; committedQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
+                    { IconButton(onClick = { queryInput = ""; committedQuery = "" }) { Icon(AppIcons.Close, contentDescription = "Clear search") } }
                 } else {
                     null
                 },
@@ -335,7 +329,7 @@ fun DiscoverRow(item: CatalogItem, onAdd: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(AppIcons.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -349,7 +343,7 @@ fun DiscoverRow(item: CatalogItem, onAdd: () -> Unit) {
                 }
                 item.averageRating?.let {
                     Icon(
-                        Icons.Filled.Star,
+                        AppIcons.Star,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 8.dp).size(12.dp),
@@ -364,7 +358,7 @@ fun DiscoverRow(item: CatalogItem, onAdd: () -> Unit) {
             }
         }
         IconButton(onClick = onAdd) {
-            Icon(Icons.Filled.Add, contentDescription = "Add ${item.title} to library")
+            Icon(AppIcons.Add, contentDescription = "Add ${item.title} to library")
         }
     }
 }
@@ -390,7 +384,7 @@ private fun SyncedDiscoverRow(item: SyncedCatalogItem, onAdd: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Icon(Icons.Filled.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(AppIcons.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
@@ -406,7 +400,7 @@ private fun SyncedDiscoverRow(item: SyncedCatalogItem, onAdd: () -> Unit) {
             }
         }
         IconButton(onClick = onAdd) {
-            Icon(Icons.Filled.Add, contentDescription = "Add ${item.title} to library")
+            Icon(AppIcons.Add, contentDescription = "Add ${item.title} to library")
         }
     }
 }

@@ -12,11 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mofy.app.data.library.LibraryItem
 import com.mofy.app.data.tmdb.MediaType
+import com.mofy.app.ui.icons.AppIcons
 import java.text.DateFormat
 import java.util.Date
 
@@ -81,7 +77,7 @@ fun FilterButton(count: Int, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Icon(Icons.Filled.FilterList, contentDescription = null, modifier = Modifier.size(16.dp))
+        Icon(AppIcons.FilterList, contentDescription = null, modifier = Modifier.size(16.dp))
         Text("Filters", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 6.dp))
         if (count > 0) {
             Box(
@@ -110,7 +106,7 @@ fun ActiveFilterChip(label: String, onRemove: (() -> Unit)?) {
         Text(label, style = MaterialTheme.typography.labelMedium)
         if (onRemove != null) {
             IconButton(onClick = onRemove, modifier = Modifier.size(22.dp).padding(start = 2.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = "Remove filter", modifier = Modifier.size(14.dp))
+                Icon(AppIcons.Close, contentDescription = "Remove filter", modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -161,7 +157,7 @@ fun LibraryListRow(item: LibraryItem, onClick: () -> Unit, onDelete: (() -> Unit
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(AppIcons.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
@@ -179,7 +175,7 @@ fun LibraryListRow(item: LibraryItem, onClick: () -> Unit, onDelete: (() -> Unit
         }
         if (onDelete != null) {
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete ${item.title}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(AppIcons.Delete, contentDescription = "Delete ${item.title}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

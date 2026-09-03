@@ -14,10 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +24,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.mofy.app.ui.icons.AppIcons
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -216,10 +215,10 @@ private fun MofyApp(
                     title = { Text("Mofy") },
                     actions = {
                         IconButton(onClick = { showJoinSheet = true }) {
-                            Icon(Icons.Filled.Groups, contentDescription = "Join a Watch Together session")
+                            Icon(AppIcons.Groups, contentDescription = "Join a Watch Together session")
                         }
                         IconButton(onClick = { navController.navigate(PushedRoute.SEARCH) }) {
-                            Icon(Icons.Filled.Search, contentDescription = "Search")
+                            Icon(AppIcons.Search, contentDescription = "Search")
                         }
                     },
                 )
@@ -228,7 +227,7 @@ private fun MofyApp(
                     title = { Text(backStackEntry?.arguments?.getString("siteName") ?: "") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -236,7 +235,7 @@ private fun MofyApp(
                     title = { Text("Edit Site") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -244,7 +243,7 @@ private fun MofyApp(
                     title = { Text("Add Site") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -252,7 +251,7 @@ private fun MofyApp(
                     title = { Text("Link") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -260,7 +259,7 @@ private fun MofyApp(
                     title = { Text("Import") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -268,7 +267,7 @@ private fun MofyApp(
                     title = { Text("Add manually") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -276,7 +275,7 @@ private fun MofyApp(
                     title = { Text("Search") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -284,7 +283,7 @@ private fun MofyApp(
                     title = { Text("Discover") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -294,7 +293,7 @@ private fun MofyApp(
                     title = { Text("Details") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -302,7 +301,7 @@ private fun MofyApp(
                     title = { Text("Import") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -319,7 +318,7 @@ private fun MofyApp(
                     },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
                         }
                     },
                 )
@@ -338,7 +337,7 @@ private fun MofyApp(
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(destination.icon, contentDescription = destination.label) },
+                            icon = { Icon(ImageVector.vectorResource(destination.iconRes), contentDescription = destination.label) },
                             label = { Text(destination.label) },
                         )
                     }

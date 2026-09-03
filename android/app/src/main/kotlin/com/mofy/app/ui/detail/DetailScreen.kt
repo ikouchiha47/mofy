@@ -17,13 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.ThumbDown
-import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -55,6 +48,7 @@ import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.MediaType
 import com.mofy.app.data.tmdb.TmdbRepository
 import com.mofy.app.data.tmdb.TmdbResult
+import com.mofy.app.ui.icons.AppIcons
 import com.mofy.app.ui.watchtogether.SessionPill
 import com.mofy.app.watchtogether.SessionState
 import kotlinx.coroutines.flow.emptyFlow
@@ -227,7 +221,7 @@ fun DetailScreen(
                             )
                         } else {
                             Icon(
-                                Icons.Filled.Sync,
+                                AppIcons.Sync,
                                 contentDescription = "Sync image",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(28.dp),
@@ -328,7 +322,7 @@ fun DetailScreen(
             val isLinked = activeLink != null
             Row(modifier = Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
                 FeedbackIconButton(
-                    icon = Icons.Filled.ThumbUp,
+                    icon = AppIcons.ThumbUp,
                     label = "Like",
                     active = current.feedback == Feedback.LIKE,
                     onClick = {
@@ -338,7 +332,7 @@ fun DetailScreen(
                 )
                 Spacer(modifier = Modifier.width(28.dp))
                 FeedbackIconButton(
-                    icon = Icons.Filled.Whatshot,
+                    icon = AppIcons.Whatshot,
                     label = "Super Like",
                     active = current.feedback == Feedback.SUPER_LIKE,
                     onClick = {
@@ -348,7 +342,7 @@ fun DetailScreen(
                 )
                 Spacer(modifier = Modifier.width(28.dp))
                 FeedbackIconButton(
-                    icon = Icons.Filled.ThumbDown,
+                    icon = AppIcons.ThumbDown,
                     label = "Not Interested",
                     active = current.feedback == Feedback.NOT_INTERESTED,
                     onClick = {
@@ -385,7 +379,7 @@ fun DetailScreen(
                         shape = MaterialTheme.shapes.small,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(AppIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Linked")
                     }
@@ -473,7 +467,7 @@ private fun SyncInfoButton(syncing: Boolean, onClick: () -> Unit) {
             .clickable(enabled = !syncing, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        Icon(Icons.Filled.Sync, contentDescription = null, tint = accentBlue, modifier = Modifier.size(14.dp))
+        Icon(AppIcons.Sync, contentDescription = null, tint = accentBlue, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(4.dp))
         Text(if (syncing) "Syncing…" else "Sync info", style = MaterialTheme.typography.labelSmall, color = accentBlue)
     }

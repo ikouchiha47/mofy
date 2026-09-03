@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +41,7 @@ import com.mofy.app.ui.components.FilterSidePanel
 import com.mofy.app.ui.components.SelectableListRow
 import com.mofy.app.ui.components.TypeSegmentedControl
 import com.mofy.app.ui.discover.DiscoverRow
+import com.mofy.app.ui.icons.AppIcons
 import kotlinx.coroutines.delay
 
 /**
@@ -114,9 +112,9 @@ fun SearchScreen(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Search Discover + Library") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
                 trailingIcon = if (searchQuery.isNotEmpty()) {
-                    { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
+                    { IconButton(onClick = { searchQuery = "" }) { Icon(AppIcons.Close, contentDescription = "Clear search") } }
                 } else {
                     null
                 },

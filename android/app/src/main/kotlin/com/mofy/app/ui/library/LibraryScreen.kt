@@ -13,10 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +42,7 @@ import com.mofy.app.ui.components.FilterSidePanel
 import com.mofy.app.ui.components.LibraryListRow
 import com.mofy.app.ui.components.SelectableListRow
 import com.mofy.app.ui.components.TypeSegmentedControl
+import com.mofy.app.ui.icons.AppIcons
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
@@ -113,9 +110,9 @@ fun LibraryScreen(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Search title or overview") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
                 trailingIcon = if (searchQuery.isNotEmpty()) {
-                    { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
+                    { IconButton(onClick = { searchQuery = "" }) { Icon(AppIcons.Close, contentDescription = "Clear search") } }
                 } else {
                     null
                 },
@@ -129,7 +126,7 @@ fun LibraryScreen(
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text("Import from device", modifier = Modifier.padding(start = 8.dp))
                 }
                 OutlinedButton(

@@ -97,6 +97,23 @@ android {
     packaging {
         jniLibs.useLegacyPackaging = true
 
+        // Some JVM deps (HuggingFace tokenizers via ai.djl, JNA) publish
+        // native artifacts for every desktop platform under non-standard
+        // resource paths ("native/lib/<os>-<arch>/...", "com/sun/jna/...")
+        // that Android's abiFilters (which only prune lib/<abi>/*.so) never
+        // touch - Windows DLLs, a macOS dylib, and AIX/PPC static libs were
+        // all shipping in a real device APK (confirmed via `unzip -l`,
+        // ~26MB dead weight) despite this being an arm64-v8a-only Android
+        // build that will never load any of them.
+        resources {
+            excludes += setOf(
+                "native/lib/win-x86_64/**",
+                "native/lib/osx-aarch64/**",
+                "native/lib/osx-x86_64/**",
+                "native/lib/linux-x86_64/**",
+                "com/sun/jna/**",
+            )
+        }
     }
 
     compileOptions {
@@ -123,7 +140,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")

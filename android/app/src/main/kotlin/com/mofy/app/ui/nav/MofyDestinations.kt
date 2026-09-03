@@ -1,18 +1,20 @@
 package com.mofy.app.ui.nav
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.ui.graphics.vector.ImageVector
+import com.mofy.app.R
 
-/** The 4 bottom-nav tabs - see docs/adrs/0003-app-navigation-and-screen-flow.md. */
-enum class TopLevelDestination(val route: String, val label: String, val icon: ImageVector) {
-    HOME("home", "Home", Icons.Filled.Home),
-    BROWSE("browse", "Browse", Icons.Filled.Explore),
-    LIBRARY("library", "Library", Icons.Filled.VideoLibrary),
-    SETTINGS("settings", "Settings", Icons.Filled.Settings),
+/**
+ * The 4 bottom-nav tabs - see docs/adrs/0003-app-navigation-and-screen-flow.md.
+ * iconRes (not ImageVector) - this enum's constants are evaluated eagerly at
+ * class init, not inside a @Composable, so ImageVector.vectorResource() (the
+ * local-drawable replacement for material-icons-extended's Icons.Filled.*,
+ * see res/drawable/ic_*.xml) can't be called here; it's resolved at the
+ * single render call site instead (MainActivity's NavigationBarItem icon).
+ */
+enum class TopLevelDestination(val route: String, val label: String, val iconRes: Int) {
+    HOME("home", "Home", R.drawable.ic_home),
+    BROWSE("browse", "Browse", R.drawable.ic_explore),
+    LIBRARY("library", "Library", R.drawable.ic_video_library),
+    SETTINGS("settings", "Settings", R.drawable.ic_settings),
 }
 
 /** Pushed routes reached from within a tab - no bottom nav on these. */

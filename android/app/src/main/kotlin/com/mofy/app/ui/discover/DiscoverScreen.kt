@@ -102,14 +102,19 @@ fun DiscoverScreen(
     facetDecoder: FacetDecoder = remember { RuleBasedFacetDecoder() },
     syncedCatalogDao: SyncedCatalogDao? = null,
     onAdd: (CatalogItem) -> Unit,
+    // Lets Home's "More" links open Discover pre-filtered (e.g. Upcoming TV
+    // -> source=NEW_AND_UPCOMING, type=TV) instead of always landing on ALL.
+    initialSource: DiscoverSource = DiscoverSource.ALL,
+    initialSort: CatalogSort = CatalogSort.MOST_VOTED,
+    initialType: MediaType? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var selectedType by remember { mutableStateOf<MediaType?>(null) }
+    var selectedType by remember { mutableStateOf(initialType) }
     var selectedGenre by remember { mutableStateOf<String?>(null) }
-    var selectedSort by remember { mutableStateOf(CatalogSort.MOST_VOTED) }
-    var discoverSource by remember { mutableStateOf(DiscoverSource.ALL) }
+    var selectedSort by remember { mutableStateOf(initialSort) }
+    var discoverSource by remember { mutableStateOf(initialSource) }
     var filterSheetOpen by remember { mutableStateOf(false) }
 
     var queryInput by remember { mutableStateOf("") }
@@ -168,12 +173,19 @@ fun DiscoverScreen(
     }
     val items: LazyPagingItems<CatalogItem> = pagingFlow.collectAsLazyPagingItems()
 
-    val syncedPagingFlow = remember(discoverSource, syncedCatalogDao, semanticMode) {
+    // Movie/TV segmented control filters the synced feed too - UPCOMING is
+    // the movie kind, AIRING_TODAY the TV kind (see SyncedCatalogRepository).
+    val syncedKindFilter = when (selectedType) {
+        MediaType.MOVIE -> "UPCOMING"
+        MediaType.TV -> "AIRING_TODAY"
+        null -> null
+    }
+    val syncedPagingFlow = remember(discoverSource, syncedCatalogDao, semanticMode, syncedKindFilter) {
         val dao = syncedCatalogDao
         if (dao != null && discoverSource == DiscoverSource.NEW_AND_UPCOMING && !semanticMode) {
             Pager(
                 config = PagingConfig(pageSize = 40, initialLoadSize = 40, prefetchDistance = 40),
-                pagingSourceFactory = { SyncedCatalogPagingSource(dao) },
+                pagingSourceFactory = { SyncedCatalogPagingSource(dao, kind = syncedKindFilter) },
             ).flow
         } else {
             emptyFlow<PagingData<SyncedCatalogItem>>()
@@ -309,8 +321,9 @@ fun DiscoverScreen(
     }
 }
 
+/** Reused by SearchScreen (Discover + Library fused search) as well as Discover itself. */
 @Composable
-private fun DiscoverRow(item: CatalogItem, onAdd: () -> Unit) {
+fun DiscoverRow(item: CatalogItem, onAdd: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

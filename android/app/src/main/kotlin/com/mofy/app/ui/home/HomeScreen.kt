@@ -50,6 +50,9 @@ import java.time.ZoneId
 
 private val HOME_GENRES = listOf("Action", "Drama", "Comedy", "Thriller", "Sci-Fi", "Horror")
 
+/** Which Home row's "More" was tapped - the caller maps this to a Discover deep link. */
+enum class DiscoverSection { ALL_TIME_CLASSICS, NEW_RELEASES, UPCOMING_MOVIES, UPCOMING_TV }
+
 @Composable
 fun HomeScreen(
     contentPadding: PaddingValues,
@@ -60,6 +63,10 @@ fun HomeScreen(
     onItemClick: (LibraryItem) -> Unit = {},
     onCatalogItemClick: (CatalogItem) -> Unit = {},
     onContinueWatching: (WatchProgressWithItem) -> Unit = {},
+    // "More" on All Time Classics / New Releases / Upcoming Movies /
+    // Upcoming TV - opens Discover pre-filtered to that exact section
+    // instead of the generic unfiltered list. See PushedRoute.discover().
+    onMoreClick: (DiscoverSection) -> Unit = {},
 ) {
     val libraryItems by (libraryDao?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
     val continueWatching by (watchProgressDao?.observeInProgress() ?: emptyFlow()).collectAsState(initial = emptyList())
@@ -68,7 +75,12 @@ fun HomeScreen(
     var popular by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var newReleases by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var genreSections by remember { mutableStateOf<List<Pair<String, List<CatalogItem>>>>(emptyList()) }
-    var newAndUpcoming by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    // Split by kind, not one combined "recent(6)" list - a combined list
+    // ordered by firstSeenEpochMillis DESC let AIRING_TODAY (synced after
+    // UPCOMING in the same sync pass, so slightly newer timestamps) crowd
+    // out movies entirely in a small LIMIT 6 pull.
+    var upcomingMovies by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    var upcomingTv by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
 
     LaunchedEffect(catalogRepository, posterVersion) {
         if (catalogRepository == null) return@LaunchedEffect
@@ -81,7 +93,8 @@ fun HomeScreen(
 
     LaunchedEffect(syncedCatalogDao) {
         if (syncedCatalogDao != null) {
-            newAndUpcoming = syncedCatalogDao.recent(6).map { it.toHomeCatalogItem() }
+            upcomingMovies = syncedCatalogDao.recentByKind("UPCOMING", 6).map { it.toHomeCatalogItem() }
+            upcomingTv = syncedCatalogDao.recentByKind("AIRING_TODAY", 6).map { it.toHomeCatalogItem() }
         }
     }
 
@@ -125,22 +138,29 @@ fun HomeScreen(
 
         if (popular.isNotEmpty()) {
             item {
-                SectionHeader("All Time Classics")
+                SectionHeader("All Time Classics", onMore = { onMoreClick(DiscoverSection.ALL_TIME_CLASSICS) })
                 CatalogRow(popular, onCatalogItemClick)
             }
         }
 
         if (newReleases.isNotEmpty()) {
             item {
-                SectionHeader("New Releases")
+                SectionHeader("New Releases", onMore = { onMoreClick(DiscoverSection.NEW_RELEASES) })
                 CatalogRow(newReleases, onCatalogItemClick)
             }
         }
 
-        if (newAndUpcoming.isNotEmpty()) {
+        if (upcomingTv.isNotEmpty()) {
             item {
-                SectionHeader("Upcoming")
-                CatalogRow(newAndUpcoming, onCatalogItemClick)
+                SectionHeader("Upcoming TV", onMore = { onMoreClick(DiscoverSection.UPCOMING_TV) })
+                CatalogRow(upcomingTv, onCatalogItemClick)
+            }
+        }
+
+        if (upcomingMovies.isNotEmpty()) {
+            item {
+                SectionHeader("Upcoming Movies", onMore = { onMoreClick(DiscoverSection.UPCOMING_MOVIES) })
+                CatalogRow(upcomingMovies, onCatalogItemClick)
             }
         }
 
@@ -209,12 +229,21 @@ private fun ContinueWatchingCard(wp: WatchProgressWithItem, onClick: () -> Unit)
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-    )
+private fun SectionHeader(title: String, onMore: (() -> Unit)? = null) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        if (onMore != null) {
+            Text(
+                "More",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onMore),
+            )
+        }
+    }
 }
 
 @Composable

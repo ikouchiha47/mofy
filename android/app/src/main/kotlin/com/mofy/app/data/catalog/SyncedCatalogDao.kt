@@ -16,11 +16,14 @@ interface SyncedCatalogDao {
     @Query("SELECT * FROM synced_catalog_items ORDER BY firstSeenEpochMillis DESC LIMIT :limit OFFSET :offset")
     suspend fun page(limit: Int, offset: Int): List<SyncedCatalogItem>
 
+    @Query("SELECT * FROM synced_catalog_items WHERE kind = :kind ORDER BY firstSeenEpochMillis DESC LIMIT :limit OFFSET :offset")
+    suspend fun pageByKind(kind: String, limit: Int, offset: Int): List<SyncedCatalogItem>
+
     @Query("SELECT id FROM synced_catalog_items WHERE tmdbId = :tmdbId AND mediaType = :mediaType")
     suspend fun findId(tmdbId: Int, mediaType: String): Long?
 
     /**
-     * Combined "New & Upcoming" feed across all four kinds — needed by task 9.
+     * Combined "Upcoming" feed across all kinds — needed by task 9.
      * Returns most recent items regardless of kind.
      */
     @Query("SELECT * FROM synced_catalog_items ORDER BY firstSeenEpochMillis DESC LIMIT :limit")

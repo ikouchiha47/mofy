@@ -180,6 +180,27 @@ private fun MofyApp(
     }
     val coroutineScope = rememberCoroutineScope()
 
+    // Shared by Home's onCatalogItemClick, Discover's onAdd, and Search's
+    // onItemClick - opens Detail for a CatalogItem regardless of where it
+    // came from. A result can already BE a library item
+    // (CatalogRepository.semanticSearch's "lib:$id" results, or Discover's
+    // library-with-embedding track) - those must reopen the existing row,
+    // not build a fresh one (which would set imdbId = "lib:$id", not a real
+    // imdb id, creating a duplicate). Anything else is IMDb-only (catalog.db
+    // or synced TMDB rows) - dedupes by imdbId, no TMDB call, see
+    // LibraryDao.openCatalogItem.
+    fun openCatalogItemDetail(catalogItem: com.mofy.app.data.catalog.CatalogItem) {
+        val libId = catalogItem.tconst.removePrefix("lib:").takeIf { it != catalogItem.tconst }
+        if (libId != null) {
+            navController.navigate("detail/$libId")
+        } else {
+            coroutineScope.launch {
+                val id = database.libraryDao().openCatalogItem(catalogItem.toLibraryItem())
+                navController.navigate("detail/$id")
+            }
+        }
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val isTopLevel = TopLevelDestination.entries.any { it.route == currentRoute }
@@ -339,16 +360,22 @@ private fun MofyApp(
                     catalogRepository = catalogRepository,
                     syncedCatalogDao = database.syncedCatalogDao(),
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
-                    onCatalogItemClick = { item ->
-                        // See Discover's onAdd above for why this opens
-                        // Detail directly instead of resolveMatch.
-                        coroutineScope.launch {
-                            val id = database.libraryDao().openCatalogItem(item.toLibraryItem())
-                            navController.navigate("detail/$id")
-                        }
-                    },
+                    onCatalogItemClick = { item -> openCatalogItemDetail(item) },
                     onContinueWatching = { wp ->
                         navController.navigate("detail/${wp.libraryItemId}")
+                    },
+                    onMoreClick = { section ->
+                        val route = when (section) {
+                            com.mofy.app.ui.home.DiscoverSection.ALL_TIME_CLASSICS ->
+                                PushedRoute.discover(sort = "MOST_VOTED")
+                            com.mofy.app.ui.home.DiscoverSection.NEW_RELEASES ->
+                                PushedRoute.discover(sort = "NEWEST")
+                            com.mofy.app.ui.home.DiscoverSection.UPCOMING_MOVIES ->
+                                PushedRoute.discover(source = "NEW_AND_UPCOMING", type = "MOVIE")
+                            com.mofy.app.ui.home.DiscoverSection.UPCOMING_TV ->
+                                PushedRoute.discover(source = "NEW_AND_UPCOMING", type = "TV")
+                        }
+                        navController.navigate(route)
                     },
                 )
             }
@@ -364,28 +391,23 @@ private fun MofyApp(
                         val route = site?.let { PushedRoute.editSite(it.name) } ?: PushedRoute.EDIT_SITE_NEW
                         navController.navigate(route)
                     },
-                    onDiscoverClick = { navController.navigate(PushedRoute.DISCOVER) },
+                    onDiscoverClick = { navController.navigate(PushedRoute.discover()) },
                 )
             }
-            composable(PushedRoute.DISCOVER) {
+            composable(PushedRoute.DISCOVER) { backStack ->
+                val sourceArg = backStack.arguments?.getString("source") ?: "ALL"
+                val sortArg = backStack.arguments?.getString("sort") ?: "MOST_VOTED"
+                val typeArg = backStack.arguments?.getString("type") ?: "ANY"
                 com.mofy.app.ui.discover.DiscoverScreen(
                     contentPadding = contentPadding,
                     catalogRepository = catalogRepository,
                     embedder = onDeviceEmbedder,
                     facetDecoder = modelFacetDecoder,
                     syncedCatalogDao = database.syncedCatalogDao(),
-                    onAdd = { catalogItem ->
-                        // Catalog items are IMDb-only, never have a tmdbId -
-                        // open Detail directly (openCatalogItem dedupes by
-                        // imdbId, no TMDB call). Detail's own Sync info/Sync
-                        // image resolve by imdbId (TMDB's /find endpoint,
-                        // zero ambiguity) and only fall back to text-search
-                        // Confirm Match (RESOLVE_MATCH) if that fails.
-                        coroutineScope.launch {
-                            val id = database.libraryDao().openCatalogItem(catalogItem.toLibraryItem())
-                            navController.navigate("detail/$id")
-                        }
-                    },
+                    initialSource = runCatching { com.mofy.app.data.catalog.DiscoverSource.valueOf(sourceArg) }.getOrDefault(com.mofy.app.data.catalog.DiscoverSource.ALL),
+                    initialSort = runCatching { com.mofy.app.data.catalog.CatalogSort.valueOf(sortArg) }.getOrDefault(com.mofy.app.data.catalog.CatalogSort.MOST_VOTED),
+                    initialType = runCatching { com.mofy.app.data.tmdb.MediaType.valueOf(typeArg) }.getOrNull(),
+                    onAdd = { catalogItem -> openCatalogItemDetail(catalogItem) },
                 )
             }
             composable(PushedRoute.RESOLVE_MATCH) { backStack ->
@@ -481,9 +503,10 @@ private fun MofyApp(
             composable(PushedRoute.SEARCH) {
                 com.mofy.app.ui.search.SearchScreen(
                     contentPadding = contentPadding,
-                    libraryDao = database.libraryDao(),
-                    genreRepository = genreRepository,
-                    onItemClick = { item -> navController.navigate("detail/${item.id}") },
+                    catalogRepository = catalogRepository,
+                    embedder = onDeviceEmbedder,
+                    facetDecoder = modelFacetDecoder,
+                    onItemClick = { item -> openCatalogItemDetail(item) },
                 )
             }
             composable(PushedRoute.IMPORT_LINK) {

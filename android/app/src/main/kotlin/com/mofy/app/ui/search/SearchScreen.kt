@@ -21,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,66 +29,83 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.mofy.app.data.library.LibraryDao
-import com.mofy.app.data.library.LibraryItem
-import com.mofy.app.data.tmdb.GenreRepository
+import com.mofy.app.data.catalog.CatalogItem
+import com.mofy.app.data.catalog.CatalogRepository
+import com.mofy.app.data.catalog.IMDB_GENRES
 import com.mofy.app.data.tmdb.MediaType
+import com.mofy.app.search.FacetDecoder
+import com.mofy.app.search.OnDeviceEmbedder
 import com.mofy.app.ui.components.ActiveFilterChip
 import com.mofy.app.ui.components.FilterButton
 import com.mofy.app.ui.components.FilterSidePanel
-import com.mofy.app.ui.components.LibraryListRow
 import com.mofy.app.ui.components.SelectableListRow
 import com.mofy.app.ui.components.TypeSegmentedControl
-import kotlinx.coroutines.flow.emptyFlow
+import com.mofy.app.ui.discover.DiscoverRow
+import kotlinx.coroutines.delay
 
 /**
- * Search across the whole library, reached from Home's search icon - not
- * a separate index, just LibraryDao.searchLibrary (FTS + spellfix1 fuzzy
- * fallback, see LibraryDao) combined with the same Type/Genre filters
- * LibraryScreen uses. Shares its filter UI via ui/components -
- * LibraryFilterControls.kt - rather than duplicating it.
+ * Search across Discovery + Library, reached from Home's search icon -
+ * the same fused query CatalogRepository.semanticSearch() runs for
+ * Discover (bundled catalog.db FTS/embedding + library items, matched or
+ * unmatched to an embedding), not a library-only lookup. A result whose
+ * tconst already starts with "lib:" is an existing library item; the
+ * caller (see MainActivity's openCatalogItemDetail) reopens it in place
+ * instead of creating a duplicate.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     contentPadding: PaddingValues,
-    libraryDao: LibraryDao? = null,
-    genreRepository: GenreRepository? = null,
-    onItemClick: (LibraryItem) -> Unit = {},
+    catalogRepository: CatalogRepository? = null,
+    embedder: OnDeviceEmbedder? = null,
+    facetDecoder: FacetDecoder,
+    onItemClick: (CatalogItem) -> Unit = {},
 ) {
-    val items by (libraryDao?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
-
+    val context = LocalContext.current
     var selectedType by remember { mutableStateOf<MediaType?>(null) }
-    var selectedGenreId by remember { mutableStateOf<Int?>(null) }
+    var selectedGenre by remember { mutableStateOf<String?>(null) }
     var filterSheetOpen by remember { mutableStateOf(false) }
-    var genreNames by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
-    LaunchedEffect(genreRepository) {
-        genreNames = genreRepository?.getAllAsMap() ?: emptyMap()
-    }
 
     var searchQuery by remember { mutableStateOf("") }
-    var searchMatchedIds by remember { mutableStateOf<Set<String>?>(null) }
-    LaunchedEffect(searchQuery, libraryDao) {
-        searchMatchedIds = if (searchQuery.isBlank()) {
-            null
+    var debouncedQuery by remember { mutableStateOf("") }
+    LaunchedEffect(searchQuery) {
+        delay(300)
+        debouncedQuery = searchQuery
+    }
+
+    var results by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    LaunchedEffect(debouncedQuery, catalogRepository, embedder) {
+        val repository = catalogRepository
+        val activeEmbedder = embedder
+        results = if (debouncedQuery.isBlank() || repository == null || activeEmbedder == null) {
+            emptyList()
         } else {
-            libraryDao?.searchLibrary(searchQuery)?.toSet() ?: emptySet()
+            repository.semanticSearch(
+                query = debouncedQuery,
+                context = context,
+                embedder = activeEmbedder,
+                facetDecoder = facetDecoder,
+            )
         }
     }
 
-    val availableGenreIds = remember(items, genreNames) {
-        items.flatMap { it.resolvedGenreIds }.distinct().filter { it in genreNames }.sortedBy { genreNames[it] }
+    val titleTypeFilter = when (selectedType) {
+        MediaType.MOVIE -> "movie"
+        MediaType.TV -> "tvSeries"
+        null -> null
     }
-    val filtered = remember(items, selectedType, selectedGenreId, searchMatchedIds) {
-        items.filter { item ->
-            (selectedType == null || item.mediaType == selectedType?.name) &&
-                (selectedGenreId == null || selectedGenreId in item.resolvedGenreIds) &&
-                (searchMatchedIds == null || item.id in searchMatchedIds!!)
+    val filtered = remember(results, titleTypeFilter, selectedGenre) {
+        val genre = selectedGenre
+        results.filter { item ->
+            val typeOk = titleTypeFilter == null || item.titleType == titleTypeFilter
+            val genreOk = genre?.let { item.genres?.contains(it, ignoreCase = true) == true } ?: true
+            typeOk && genreOk
         }
     }
-    val activeFilterCount = listOfNotNull(selectedGenreId).size
+    val activeFilterCount = listOfNotNull(selectedGenre).size
     val focusRequester = remember { FocusRequester() }
 
     Box(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
@@ -97,7 +113,7 @@ fun SearchScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search your library") },
+                placeholder = { Text("Search Discover + Library") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = if (searchQuery.isNotEmpty()) {
                     { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") } }
@@ -112,7 +128,7 @@ fun SearchScreen(
             )
             LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-            if (items.isNotEmpty()) {
+            if (results.isNotEmpty()) {
                 TypeSegmentedControl(
                     selected = selectedType,
                     onSelect = { selectedType = it },
@@ -124,44 +140,41 @@ fun SearchScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     FilterButton(count = activeFilterCount, onClick = { filterSheetOpen = true })
-                    if (selectedGenreId != null) {
+                    if (selectedGenre != null) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        ActiveFilterChip(
-                            label = genreNames[selectedGenreId] ?: "",
-                            onRemove = { selectedGenreId = null },
-                        )
+                        ActiveFilterChip(label = selectedGenre ?: "", onRemove = { selectedGenre = null })
                     }
                 }
             }
 
             when {
                 searchQuery.isBlank() -> Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text("Search your library by title, overview, or alternate name.", textAlign = TextAlign.Center)
+                    Text("Search Discover and your library by title, overview, or genre.", textAlign = TextAlign.Center)
                 }
                 filtered.isEmpty() -> Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     Text("Nothing matches \"$searchQuery\".", textAlign = TextAlign.Center)
                 }
                 else -> LazyColumn {
-                    items(filtered, key = { it.id }) { item ->
-                        LibraryListRow(item, onClick = { onItemClick(item) })
+                    items(filtered, key = { it.tconst }) { item ->
+                        DiscoverRow(item = item, onAdd = { onItemClick(item) })
                     }
                 }
             }
         }
 
-        var pendingGenreId by remember(selectedGenreId) { mutableStateOf(selectedGenreId) }
+        var pendingGenre by remember(selectedGenre) { mutableStateOf(selectedGenre) }
         FilterSidePanel(
             visible = filterSheetOpen,
             onDismiss = { filterSheetOpen = false },
-            onClear = { pendingGenreId = null; selectedGenreId = null; filterSheetOpen = false },
-            onApply = { selectedGenreId = pendingGenreId; filterSheetOpen = false },
+            onClear = { pendingGenre = null; selectedGenre = null; filterSheetOpen = false },
+            onApply = { selectedGenre = pendingGenre; filterSheetOpen = false },
         ) {
             LazyColumn {
-                items(availableGenreIds) { genreId ->
+                items(IMDB_GENRES) { genre ->
                     SelectableListRow(
-                        label = genreNames[genreId] ?: "",
-                        selected = pendingGenreId == genreId,
-                        onClick = { pendingGenreId = if (pendingGenreId == genreId) null else genreId },
+                        label = genre,
+                        selected = pendingGenre == genre,
+                        onClick = { pendingGenre = if (pendingGenre == genre) null else genre },
                     )
                 }
             }

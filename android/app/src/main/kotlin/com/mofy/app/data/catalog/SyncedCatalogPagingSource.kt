@@ -14,6 +14,10 @@ import androidx.paging.PagingState
  */
 class SyncedCatalogPagingSource(
     private val dao: SyncedCatalogDao,
+    // Null = all kinds (Home's Upcoming "More" links pass one - UPCOMING for
+    // movies, AIRING_TODAY for TV - so tapping "More" under Upcoming TV
+    // doesn't dump you into a movie-heavy combined list).
+    private val kind: String? = null,
 ) : PagingSource<Int, SyncedCatalogItem>() {
 
     override fun getRefreshKey(state: PagingState<Int, SyncedCatalogItem>): Int? = null
@@ -21,7 +25,7 @@ class SyncedCatalogPagingSource(
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SyncedCatalogItem> {
         return try {
             val offset = params.key ?: 0
-            val items = dao.page(params.loadSize, offset)
+            val items = if (kind != null) dao.pageByKind(kind, params.loadSize, offset) else dao.page(params.loadSize, offset)
             val nextKey = if (items.size == params.loadSize) offset + items.size else null
             LoadResult.Page(
                 data = items,

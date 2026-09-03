@@ -24,7 +24,12 @@ object PushedRoute {
     const val ADD_MANUALLY = "add_manually"
     const val MANUAL_ENTRY_FORM = "manual_entry_form"
     const val SEARCH = "search"
-    const val DISCOVER = "discover"
+    // source/sort/type are required path segments with sentinel defaults
+    // ("ALL"/"MOST_VOTED"/"ANY"), same convention as RESOLVE_MATCH's
+    // existingItemId "none" - lets Home's "More" links open Discover
+    // pre-filtered without relying on Compose Navigation's separate
+    // optional-query-arg machinery.
+    const val DISCOVER = "discover/{source}/{sort}/{type}"
     // Shared by Discover's "+" (no existing item, existingItemId "none") and
     // Detail's "Sync info" when a direct tmdbId fetch isn't possible/fails
     // (existingItemId set - the confirmed match updates that item in place
@@ -37,6 +42,8 @@ object PushedRoute {
     const val WT_SESSION = "watch_together/session"
     const val WT_SCAN = "watch_together/scan"
 
+    fun discover(source: String = "ALL", sort: String = "MOST_VOTED", type: String = "ANY") =
+        "discover/$source/$sort/$type"
     fun editSite(siteName: String) = "edit_site/$siteName"
     fun link(itemId: String) = "link/$itemId"
     fun resolveMatch(title: String, mediaType: String, existingItemId: String = "none") =

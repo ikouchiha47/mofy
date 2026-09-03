@@ -100,10 +100,20 @@ class CatalogRepository(
         val catalogResults = fetchByTconsts(boostedIds.take(50))
 
         // --- Library items with embeddings (user-added titles) ---
-        val libraryResults = libraryItemCatalogItems(queryVec)
+        val embeddedLibraryResults = libraryItemCatalogItems(queryVec)
 
-        // Merge: catalog first, then library items not already present
+        // --- Library items by plain FTS/spellfix (no embedding required) ---
+        // Home's search used to only hit this DAO method directly and never
+        // the catalog at all; folding it in here closes the other half of
+        // the gap - an item added without ever getting embedded (see
+        // OnDeviceEmbedder init timing) was otherwise invisible to search
+        // entirely, not just weakly ranked. See project memory item 4.
+        val ftsLibraryResults = libraryFtsCatalogItems(query)
+
+        // Merge: catalog first, then library items (embedding-matched, then
+        // FTS-matched) not already present by either tconst or library id.
         val seen = catalogResults.map { it.tconst }.toHashSet()
+        val libraryResults = (embeddedLibraryResults + ftsLibraryResults).distinctBy { it.tconst }
         catalogResults + libraryResults.filter { it.tconst !in seen }
     }
 
@@ -292,6 +302,26 @@ class CatalogRepository(
             }
             .sortedByDescending { it.first }
             .map { it.second }
+    }
+
+    private suspend fun libraryFtsCatalogItems(query: String): List<CatalogItem> {
+        val dao = libraryDao ?: return emptyList()
+        val matchedIds = dao.searchLibrary(query)
+        if (matchedIds.isEmpty()) return emptyList()
+        return matchedIds.mapNotNull { id ->
+            val item = dao.getById(id) ?: return@mapNotNull null
+            CatalogItem(
+                tconst = "lib:${item.id}",
+                title = item.title,
+                titleType = item.mediaType ?: "movie",
+                startYear = item.year?.toIntOrNull(),
+                genres = item.genresManual ?: "",
+                averageRating = item.voteAverage,
+                numVotes = null,
+                overview = item.overview,
+                runtimeMinutes = item.runtime,
+            )
+        }
     }
 
     private fun blobToFloats(blob: ByteArray): FloatArray {

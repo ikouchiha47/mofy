@@ -69,4 +69,19 @@ object Migrations {
             )
         }
     }
+
+    // 17 -> 18: dropped watch_progress (its libraryItemId column was Long
+    // while library_items.id is a String UUID - the join could never
+    // match, so nothing ever actually populated "Continue Watching"),
+    // replaced with three columns added directly to library_items -
+    // verified against app/schemas/.../18.json, ADD COLUMN per the added
+    // column's exact type/nullability there.
+    val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL("ALTER TABLE `library_items` ADD COLUMN `lastPositionMs` INTEGER NOT NULL DEFAULT 0")
+            connection.execSQL("ALTER TABLE `library_items` ADD COLUMN `lastDurationMs` INTEGER NOT NULL DEFAULT 0")
+            connection.execSQL("ALTER TABLE `library_items` ADD COLUMN `lastWatchedAtEpochMillis` INTEGER")
+            connection.execSQL("DROP TABLE IF EXISTS `watch_progress`")
+        }
+    }
 }

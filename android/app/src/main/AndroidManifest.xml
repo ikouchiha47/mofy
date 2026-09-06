@@ -55,5 +55,14 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- ADR 0011: keeps a live Watch Together session's WebSocket/data
+             channel alive independent of which screen is visible and of
+             the app being backgrounded - started/stopped by
+             WatchTogetherSessionManager itself, not any Activity/screen. -->
+        <service
+            android:name=".watchtogether.WatchTogetherForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 </manifest>

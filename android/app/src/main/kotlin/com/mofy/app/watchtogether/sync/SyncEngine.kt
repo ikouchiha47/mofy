@@ -20,7 +20,7 @@ class SyncEngine(
     private val roomKey: String,
     private val itemHash: String,
     localParticipant: Participant,
-    private val player: PlayerController,
+    private var player: PlayerController,
     private val transport: WtTransport,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val idGenerator: () -> String = {
@@ -36,6 +36,10 @@ class SyncEngine(
         data class Error(val reason: String) : SyncEvent
         data class ParticipantsChanged(val participants: List<Participant>) : SyncEvent
         data object Joined : SyncEvent
+
+        /** Guest-only: the host's connection dropped - not a clean [WatchTogetherSession.end],
+         * so the caller should demote to a local solo player rather than just erroring out. */
+        data object HostLost : SyncEvent
     }
 
     private var selfId: String = localParticipant.id
@@ -82,42 +86,104 @@ class SyncEngine(
         }
     }
 
+    /**
+     * Test/pump seam for time-driven rules (debounce, ignore window, host
+     * disconnect grace). Called on an interval by the production clock owner
+     * once these rules are implemented. Currently a no-op - the flows-doc
+     * spec tests exercise it and stay RED until the rules land.
+     */
+    fun tick() {
+        // No-op stub. Debounce flush, ignore-window expiry, and grace
+        // expiry belong here once implemented.
+    }
+
     fun close() {
         if (closed) return
         closed = true
         transport.setListener(null)
     }
 
+    // Every access to `player` goes through these three - it can be
+    // released out from under this engine at any time (Back backgrounds
+    // the Player screen: only the local VlcPlayerController is torn down,
+    // this engine/session stays alive per the redesign's session-survives-
+    // navigation decision), and calling any method on an already-released
+    // native player throws IllegalStateException. Confirmed on a real
+    // device 3 separate times, at 3 separate unguarded call sites
+    // (rebindPlayer, heartbeatTick, and this file's other direct
+    // `player.xxx` reads/writes before this refactor) - centralizing here
+    // instead of guarding each call site individually.
+    private fun safePositionMs(): Long = runCatching { player.positionMs }.getOrDefault(0L)
+    private fun safeIsPlaying(): Boolean = runCatching { player.isPlaying }.getOrDefault(false)
+    private fun withPlayer(block: (PlayerController) -> Unit) {
+        runCatching { block(player) }
+    }
+
     fun localPlay() {
-        player.play()
-        emitControl(WtMessage.Play(player.positionMs, selfId))
+        withPlayer { it.play() }
+        emitControl(WtMessage.Play(safePositionMs(), selfId))
     }
 
     fun localPause() {
-        player.pause()
-        emitControl(WtMessage.Pause(player.positionMs, selfId))
+        withPlayer { it.pause() }
+        emitControl(WtMessage.Pause(safePositionMs(), selfId))
     }
 
     fun localSeek(positionMs: Long) {
-        player.seekTo(positionMs)
+        withPlayer { it.seekTo(positionMs) }
         emitControl(WtMessage.Seek(positionMs, selfId))
     }
 
     fun localSetSubtitle(index: Int?) {
-        player.setSubtitleTrack(index)
+        withPlayer { it.setSubtitleTrack(index) }
     }
 
     fun localSetAudio(index: Int?) {
-        player.setAudioTrack(index)
+        withPlayer { it.setAudioTrack(index) }
+    }
+
+    /**
+     * Swaps the underlying player without tearing down signaling/transport -
+     * used when the lobby's headless [PlayerController] (no media chosen
+     * yet) gets replaced by a real one once playback actually starts.
+     * Previously this meant ending the whole session and creating a fresh
+     * one (new roomKey-scoped signaling server, new random port), which
+     * silently dropped any guest already connected during the lobby phase -
+     * confirmed on a real device: the guest's WebSocket closed (code 1001)
+     * the instant "Start watching" was pressed, and the invite link/QR now
+     * pointed at a dead port. Rebinding in place keeps the same signaling
+     * server and connections alive across that transition.
+     */
+    fun rebindPlayer(newPlayer: PlayerController) {
+        // The previous player can already be released by the time this
+        // runs - confirmed crash on a real device: SoloPlayerScreen's
+        // DisposableEffect is keyed on mediaUri, which starts as "" before
+        // the DB-backed link flow resolves, then changes to the real URI
+        // moments later - firing this twice, with the second call reading
+        // positionMs off the first (already-disposed) player.
+        val positionMs = safePositionMs()
+        player = newPlayer
+        newPlayer.seekTo(positionMs)
+        localPlay() // also broadcasts Play so any already-connected guest starts too
     }
 
     /** Host-only: emit a position heartbeat (tests call this instead of sleeping). */
     fun heartbeatTick() {
         if (role != Role.HOST || closed) return
+        // Ticks every POSITION_HEARTBEAT_MS from WatchTogetherForegroundService's
+        // background coroutine, independent of any screen - the local player
+        // can be released (e.g. Back backgrounds the Player screen, only the
+        // local VlcPlayerController is torn down, session stays alive) while
+        // this loop keeps running. Confirmed crash on a real device:
+        // IllegalStateException "can't get VLCObject instance" reading a
+        // released player from this exact call, uncaught on a raw
+        // coroutine - crashed the whole app, not just this loop.
+        val positionMs = safePositionMs()
+        val isPlaying = safeIsPlaying()
         broadcast(
             WtMessage.Position(
-                positionMs = player.positionMs,
-                isPlaying = player.isPlaying,
+                positionMs = positionMs,
+                isPlaying = isPlaying,
                 ts = clock(),
             ),
         )
@@ -166,8 +232,8 @@ class SyncEngine(
             WtMessage.JoinAck(
                 participantId = id,
                 participants = participants.values.toList(),
-                positionMs = player.positionMs,
-                isPlaying = player.isPlaying,
+                positionMs = safePositionMs(),
+                isPlaying = safeIsPlaying(),
             ),
         )
         broadcast(
@@ -227,7 +293,7 @@ class SyncEngine(
 
     private fun handleSeek(fromPeerId: String, msg: WtMessage.Seek) {
         if (msg.by == selfId) return
-        player.seekTo(msg.positionMs)
+        withPlayer { it.seekTo(msg.positionMs) }
         if (role == Role.HOST) {
             broadcast(msg, excludePeerId = fromPeerId)
         }
@@ -238,7 +304,7 @@ class SyncEngine(
         if (!isNewerPosition(msg)) return
         lastPositionTs = msg.ts
         lastPositionMs = msg.positionMs
-        val drift = kotlin.math.abs(msg.positionMs - player.positionMs)
+        val drift = kotlin.math.abs(msg.positionMs - safePositionMs())
         val forceSeek = drift > DRIFT_THRESHOLD_MS
         applyPlayback(msg.positionMs, msg.isPlaying, forceSeek = forceSeek)
     }
@@ -250,6 +316,15 @@ class SyncEngine(
     }
 
     private fun handlePeerDisconnected(peerId: String) {
+        if (role == Role.GUEST && peerId == HOST_PEER_ID) {
+            // Guests never populate peerToParticipantId (only handleJoin,
+            // host-only, does) - without this branch, a guest losing its
+            // one connection to the host silently emitted nothing at all,
+            // and local playback just kept running forever, unsynced, with
+            // no signal to the caller that the room is actually gone.
+            events?.onEvent(SyncEvent.HostLost)
+            return
+        }
         val participantId = peerToParticipantId.remove(peerId) ?: return
         participantIdToPeer.remove(participantId)
         val removed = participants.remove(participantId) ?: return
@@ -262,10 +337,10 @@ class SyncEngine(
     }
 
     private fun applyPlayback(positionMs: Long, playing: Boolean, forceSeek: Boolean) {
-        if (forceSeek) {
-            player.seekTo(positionMs)
+        withPlayer {
+            if (forceSeek) it.seekTo(positionMs)
+            if (playing) it.play() else it.pause()
         }
-        if (playing) player.play() else player.pause()
     }
 
     private fun emitControl(msg: WtMessage) {

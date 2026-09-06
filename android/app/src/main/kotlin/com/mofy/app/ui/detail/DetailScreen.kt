@@ -67,7 +67,7 @@ fun DetailScreen(
     // real cause of "Can't play this file" (confirmed via a real logcat
     // capture, not assumed): our own code never threw, an external app
     // launched, opened, and failed on the SAF content:// URI on its own.
-    onPlay: (String) -> Unit = {},
+    onPlay: (libraryItemId: String, movieUri: String, subtitleUri: String?, subtitle2Uri: String?) -> Unit = { _, _, _, _ -> },
     // Sync info's fallback when there's no tmdbId to fetch by, or the fetch
     // 404s/fails - hands off to RESOLVE_MATCH (text search + user-confirmed
     // radio-select), not a silent guess. See MainActivity.
@@ -358,7 +358,7 @@ fun DetailScreen(
                 )
             }
             Button(
-                onClick = { activeLink?.let { onPlay(it.movieUri) } },
+                onClick = { activeLink?.let { onPlay(itemId, it.movieUri, it.subtitleUri, it.subtitle2Uri) } },
                 enabled = isLinked,
                 shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth().padding(top = 14.dp),

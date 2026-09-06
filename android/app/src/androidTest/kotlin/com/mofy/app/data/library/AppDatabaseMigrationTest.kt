@@ -2,6 +2,7 @@ package com.mofy.app.data.library
 
 import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.execSQL
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
@@ -89,6 +90,67 @@ class AppDatabaseMigrationTest {
                 stmt.close()
             }
             assertTrue("model_download_state missing, got $tables", "model_download_state" in tables)
+        } finally {
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    /**
+     * The actual regression this migration exists to prevent: a v17
+     * database with a real library_items row must still have that row,
+     * intact, after migrating to v18 - not a fresh, empty database. This
+     * is exactly the failure a missing migration (silently falling back to
+     * destructive recreation) produced on a real device.
+     */
+    @Test
+    fun migration17To18_preservesExistingLibraryItemsAndAddsProgressColumns() {
+        val dbName = "migration-test-17-18"
+        val helper17to18 = MigrationTestHelper(
+            InstrumentationRegistry.getInstrumentation(),
+            File(context.getDatabasePath(dbName).path),
+            driver,
+            AppDatabase::class,
+        )
+        try {
+            val seed = helper17to18.createDatabase(17)
+            seed.execSQL(
+                "INSERT INTO library_items (id, tmdbId, mediaType, title, originalTitle, " +
+                    "romanizedOriginalTitle, overview, posterPath, localPosterUri, posterSource, " +
+                    "year, genreIds, genresManual, voteAverage, runtime, tagline, source, " +
+                    "addedAtEpochMillis, detailSyncedAtEpochMillis, feedback, imdbId, embeddingBlob) " +
+                    "VALUES ('item-1', NULL, 'movie', 'O.C.D', NULL, NULL, '', NULL, NULL, 'NONE', " +
+                    "NULL, '', NULL, 0.0, NULL, NULL, 'MANUAL', 0, NULL, NULL, NULL, NULL)",
+            )
+            seed.close()
+
+            val db = helper17to18.runMigrationsAndValidate(18, listOf(Migrations.MIGRATION_17_18))
+
+            val stmt = db.prepare(
+                "SELECT title, lastPositionMs, lastDurationMs, lastWatchedAtEpochMillis " +
+                    "FROM library_items WHERE id = 'item-1'",
+            )
+            var rowCount = 0
+            try {
+                while (stmt.step()) {
+                    rowCount++
+                    assertTrue("title should survive the migration unchanged", stmt.getText(0) == "O.C.D")
+                    assertTrue("lastPositionMs should default to 0", stmt.getLong(1) == 0L)
+                    assertTrue("lastDurationMs should default to 0", stmt.getLong(2) == 0L)
+                    assertTrue("lastWatchedAtEpochMillis should default to NULL", stmt.isNull(3))
+                }
+            } finally {
+                stmt.close()
+            }
+            assertTrue("the pre-existing library_items row must still exist after migrating", rowCount == 1)
+
+            val tables = mutableListOf<String>()
+            val tableStmt = db.prepare("SELECT name FROM sqlite_master WHERE name = 'watch_progress'")
+            try {
+                while (tableStmt.step()) tables += tableStmt.getText(0)
+            } finally {
+                tableStmt.close()
+            }
+            assertTrue("watch_progress should be dropped, got $tables", tables.isEmpty())
         } finally {
             context.deleteDatabase(dbName)
         }

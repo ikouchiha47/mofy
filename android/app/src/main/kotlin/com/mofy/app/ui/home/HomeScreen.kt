@@ -42,8 +42,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Color
 import com.mofy.app.data.library.LibraryDao
 import com.mofy.app.data.library.LibraryItem
-import com.mofy.app.data.library.WatchProgressDao
-import com.mofy.app.data.library.WatchProgressWithItem
 import kotlinx.coroutines.flow.emptyFlow
 import java.time.Instant
 import java.time.ZoneId
@@ -57,19 +55,18 @@ enum class DiscoverSection { ALL_TIME_CLASSICS, NEW_RELEASES, UPCOMING_MOVIES, U
 fun HomeScreen(
     contentPadding: PaddingValues,
     libraryDao: LibraryDao? = null,
-    watchProgressDao: WatchProgressDao? = null,
     catalogRepository: CatalogRepository? = null,
     syncedCatalogDao: SyncedCatalogDao? = null,
     onItemClick: (LibraryItem) -> Unit = {},
     onCatalogItemClick: (CatalogItem) -> Unit = {},
-    onContinueWatching: (WatchProgressWithItem) -> Unit = {},
+    onContinueWatching: (LibraryItem) -> Unit = {},
     // "More" on All Time Classics / New Releases / Upcoming Movies /
     // Upcoming TV - opens Discover pre-filtered to that exact section
     // instead of the generic unfiltered list. See PushedRoute.discover().
     onMoreClick: (DiscoverSection) -> Unit = {},
 ) {
     val libraryItems by (libraryDao?.observeAll() ?: emptyFlow()).collectAsState(initial = emptyList())
-    val continueWatching by (watchProgressDao?.observeInProgress() ?: emptyFlow()).collectAsState(initial = emptyList())
+    val continueWatching by (libraryDao?.observeContinueWatching() ?: emptyFlow()).collectAsState(initial = emptyList())
     val posterVersion by (catalogRepository?.posterUpdates ?: emptyFlow()).collectAsState(initial = 0)
 
     var popular by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
@@ -115,8 +112,8 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp),
                 ) {
-                    items(continueWatching, key = { it.libraryItemId }) { wp ->
-                        ContinueWatchingCard(wp, onClick = { onContinueWatching(wp) })
+                    items(continueWatching, key = { it.id }) { item ->
+                        ContinueWatchingCard(item, onClick = { onContinueWatching(item) })
                     }
                 }
             }
@@ -189,8 +186,8 @@ fun HomeScreen(
 }
 
 @Composable
-private fun ContinueWatchingCard(wp: WatchProgressWithItem, onClick: () -> Unit) {
-    val progress = if (wp.durationMs > 0) wp.positionMs.toFloat() / wp.durationMs else 0f
+private fun ContinueWatchingCard(item: LibraryItem, onClick: () -> Unit) {
+    val progress = if (item.lastDurationMs > 0) item.lastPositionMs.toFloat() / item.lastDurationMs else 0f
     Column(modifier = Modifier.width(96.dp).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier
@@ -199,9 +196,9 @@ private fun ContinueWatchingCard(wp: WatchProgressWithItem, onClick: () -> Unit)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            if (wp.posterUrl != null) {
+            if (item.posterUrl != null) {
                 AsyncImage(
-                    model = wp.posterUrl,
+                    model = item.posterUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -223,8 +220,8 @@ private fun ContinueWatchingCard(wp: WatchProgressWithItem, onClick: () -> Unit)
                 )
             }
         }
-        Text(wp.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-        Text(wp.year ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(item.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+        Text(item.year ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

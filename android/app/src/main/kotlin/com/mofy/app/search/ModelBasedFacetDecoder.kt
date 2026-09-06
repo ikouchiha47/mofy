@@ -78,7 +78,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
 
     override fun decode(query: String): FacetResult {
         val sess = session ?: run {
-            Log.d(TAG, "session not ready, rule-based fallback for '$query'")
+            Log.e(TAG, "session not ready, rule-based fallback for '$query'")
             return fallback.decode(query)
         }
         val tok = tokenizer ?: return fallback.decode(query)
@@ -124,7 +124,7 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
                 popularity = popularity,
             )
             idsTensor.close(); maskTensor.close(); out.close()
-            Log.d(TAG, "query='$query' genres=${result.genres} popularity=${result.popularity} hasDate=${result.hasDate} hasMood=${result.hasMood}")
+            Log.e(TAG, "query='$query' genres=${result.genres} popularity=${result.popularity} hasDate=${result.hasDate} hasMood=${result.hasMood}")
             result
         } catch (e: Exception) {
             Log.w(TAG, "Inference failed, using rule-based fallback", e)

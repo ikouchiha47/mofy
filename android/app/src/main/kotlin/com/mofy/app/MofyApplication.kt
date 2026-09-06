@@ -15,6 +15,7 @@ import com.mofy.app.data.sites.SiteRepository
 import com.mofy.app.data.tmdb.GenreRepository
 import com.mofy.app.data.tmdb.TmdbClient
 import com.mofy.app.data.tmdb.TmdbSettings
+import com.mofy.app.watchtogether.WatchTogetherSessionManager
 import com.mofy.app.watchtogether.signaling.SignalingSettings
 import com.mofy.app.watchtogether.webrtc.PeerConnectionFactoryHolder
 import com.mofy.app.workers.CatalogSyncWorker
@@ -39,9 +40,11 @@ class MofyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        android.util.Log.e("MOFY_BOOT", "MofyApplication.onCreate() reached")
         SignalingSettings.applyBuildConfig(BuildConfig.WT_SIGNALING_URL)
         TmdbSettings.init(this)
         PeerConnectionFactoryHolder.init(this)
+        WatchTogetherSessionManager.init(this)
         val database = AppDatabase.get(this)
         val genreRepository = GenreRepository(dao = database.genreDao())
         val siteRepository = SiteRepository(dao = database.siteDao())
@@ -115,9 +118,9 @@ class MofyApplication : Application() {
     }
 
     private suspend fun backfillCatalogPosters(database: AppDatabase) {
-        android.util.Log.d("CatalogPosterBackfill", "entered")
+        android.util.Log.e("CatalogPosterBackfill", "entered")
         try {
-            android.util.Log.d("CatalogPosterBackfill", "starting")
+            android.util.Log.e("CatalogPosterBackfill", "starting")
             val catalogDb = CatalogDatabase.get(this)
             val repo = CatalogRepository(catalogDb)
             val homeGenres = listOf("Action", "Drama", "Comedy", "Thriller", "Sci-Fi", "Horror")
@@ -126,17 +129,17 @@ class MofyApplication : Application() {
                 repo.newReleases(6) +
                 homeGenres.flatMap { repo.byGenre(it, 6) }
             ).map { it.tconst }.distinct()
-            android.util.Log.d("CatalogPosterBackfill", "tconsts=$tconsts")
+            android.util.Log.e("CatalogPosterBackfill", "tconsts=$tconsts")
             val cacheDao = database.catalogPosterCacheDao()
             val cached = cacheDao.getCachedTconsts(tconsts).toSet()
             val missing = tconsts.filter { it !in cached }
-            android.util.Log.d("CatalogPosterBackfill", "missing=${missing.size}")
+            android.util.Log.e("CatalogPosterBackfill", "missing=${missing.size}")
             if (missing.isEmpty()) return
             var saved = 0
             missing.forEach { tconst ->
                 runCatching {
                     val result = TmdbClient.api.findByImdbId(tconst)
-                    android.util.Log.d("CatalogPosterBackfill", "$tconst -> poster=${result.posterPath}")
+                    android.util.Log.e("CatalogPosterBackfill", "$tconst -> poster=${result.posterPath}")
                     if (result.posterPath != null) {
                         cacheDao.upsert(CatalogPosterCache(tconst = tconst, posterPath = result.posterPath))
                         saved++
@@ -144,7 +147,7 @@ class MofyApplication : Application() {
                 }.onFailure { android.util.Log.e("CatalogPosterBackfill", "$tconst failed: $it") }
                 yield()
             }
-            android.util.Log.d("CatalogPosterBackfill", "done, saved $saved/${missing.size} posters")
+            android.util.Log.e("CatalogPosterBackfill", "done, saved $saved/${missing.size} posters")
         } catch (e: Exception) {
             android.util.Log.e("CatalogPosterBackfill", "outer failure: $e")
         }

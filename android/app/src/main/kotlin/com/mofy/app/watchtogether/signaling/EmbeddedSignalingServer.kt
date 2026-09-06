@@ -3,7 +3,9 @@ package com.mofy.app.watchtogether.signaling
 import org.java_websocket.WebSocket
 import org.java_websocket.handshake.ClientHandshake
 import org.java_websocket.server.WebSocketServer
+import java.net.Inet4Address
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -143,6 +145,33 @@ class EmbeddedSignalingServer(
             if (resourceDescriptor == null) return null
             val match = pathPattern.find(resourceDescriptor) ?: return null
             return match.groupValues[1]
+        }
+
+        /**
+         * Best-effort LAN-reachable IPv4 address for this device, for
+         * building a guest-facing invite ([urlFor]) - there's no single
+         * Android API for "the LAN IP", so this enumerates network
+         * interfaces directly. Prefers a real WiFi interface (`wlan*`) over
+         * a VPN/tunnel interface (ZeroTier and most VPN apps show up as
+         * `tun*`), on the assumption a guest on the same physical WiFi is
+         * the common case; falls back to the first non-loopback IPv4
+         * address found (which does cover a ZeroTier-only pairing, just
+         * without preference over other tunnels) if no `wlan*` interface
+         * has one. Null if nothing usable is found (e.g. no network at
+         * all) - callers should fall back to [localUrl] and accept that a
+         * guest on a different device can't actually reach it.
+         */
+        fun findLanAddress(): String? {
+            val interfaces = runCatching { NetworkInterface.getNetworkInterfaces()?.toList() }.getOrNull().orEmpty()
+            val candidates = interfaces.mapNotNull { iface ->
+                val address = iface.inetAddresses?.toList()
+                    ?.filterIsInstance<Inet4Address>()
+                    ?.firstOrNull { !it.isLoopbackAddress }
+                    ?.hostAddress
+                address?.let { iface.name to it }
+            }
+            return candidates.firstOrNull { (name, _) -> name.startsWith("wlan") }?.second
+                ?: candidates.firstOrNull()?.second
         }
     }
 }

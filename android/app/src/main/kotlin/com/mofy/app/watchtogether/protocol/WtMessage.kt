@@ -16,7 +16,12 @@ sealed interface WtMessage {
 
     @Serializable
     @SerialName("join")
-    data class Join(val roomKey: String, val displayName: String, val itemHash: String) : WtMessage
+    data class Join(
+        val roomKey: String,
+        val displayName: String,
+        val itemHash: String,
+        val durationMs: Long? = null,
+    ) : WtMessage
 
     @Serializable
     @SerialName("join-ack")
@@ -36,15 +41,15 @@ sealed interface WtMessage {
 
     @Serializable
     @SerialName("play")
-    data class Play(val positionMs: Long, val by: String) : WtMessage
+    data class Play(val positionMs: Long, val by: String, val ts: Long? = null, val seq: Long? = null) : WtMessage
 
     @Serializable
     @SerialName("pause")
-    data class Pause(val positionMs: Long, val by: String) : WtMessage
+    data class Pause(val positionMs: Long, val by: String, val ts: Long? = null, val seq: Long? = null) : WtMessage
 
     @Serializable
     @SerialName("seek")
-    data class Seek(val positionMs: Long, val by: String) : WtMessage
+    data class Seek(val positionMs: Long, val by: String, val ts: Long? = null, val seq: Long? = null) : WtMessage
 
     @Serializable
     @SerialName("position")

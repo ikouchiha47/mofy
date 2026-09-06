@@ -1,0 +1,1514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mofy — Watch Together flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0E0E10;
+    --surface: #1A1A1D;
+    --surface-2: #232327;
+    --surface-3: #2B2B30;
+    --border: #2E2E33;
+    --text: #F2F2F2;
+    --text-dim: #9A9AA2;
+    --accent: #E94560;
+    --accent-2: #4EA1FF;
+    --good: #3ECF8E;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: #050506;
+    color: var(--text);
+    font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 40px 20px 80px;
+  }
+  .page-head {
+    max-width: 1100px;
+    margin: 0 auto 32px;
+    text-align: center;
+  }
+  .page-head h1 {
+    font-family: "Bungee", sans-serif;
+    font-weight: 400;
+    font-size: 28px;
+    margin: 0 0 8px;
+  }
+  .page-head p {
+    color: var(--text-dim);
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 0 auto;
+    max-width: 640px;
+  }
+  .flow-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    justify-content: center;
+    max-width: 1400px;
+    margin: 0 auto 48px;
+    align-items: flex-start;
+  }
+  .section-head {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto 18px;
+    padding: 0 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .section-head h2 {
+    font-family: "Bungee", sans-serif;
+    font-weight: 400;
+    font-size: 15px;
+    margin: 0;
+    letter-spacing: 0.04em;
+    color: var(--accent-2);
+  }
+  .section-head span {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .frame-wrap { display: flex; flex-direction: column; align-items: center; }
+  .frame-label {
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    letter-spacing: 0.02em;
+    max-width: 300px;
+    line-height: 1.45;
+  }
+  .frame-label b { color: var(--text); }
+  .frame-label .who {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 6px;
+    margin-right: 4px;
+    vertical-align: 1px;
+  }
+  .who.host { background: rgba(233,69,96,0.15); color: var(--accent); border: 1px solid rgba(233,69,96,0.35); }
+  .who.guest { background: rgba(78,161,255,0.12); color: var(--accent-2); border: 1px solid rgba(78,161,255,0.3); }
+  .who.both { background: rgba(62,207,142,0.12); color: var(--good); border: 1px solid rgba(62,207,142,0.3); }
+
+  .phone {
+    width: 300px;
+    height: 640px;
+    background: var(--bg);
+    border-radius: 28px;
+    border: 6px solid #000;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+  }
+  .statusbar {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .topbar {
+    padding: 6px 14px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar h1 { font-size: 18px; margin: 0; font-family: "Bungee", sans-serif; font-weight: 400; }
+  .topbar .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .topbar .back { display: flex; align-items: center; gap: 10px; }
+  .topbar .back .arrow { font-size: 18px; color: var(--text-dim); }
+  .topbar .back h1 { font-size: 15px; font-family: "Manrope", sans-serif; font-weight: 700; }
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .content { flex: 1; overflow-y: auto; min-height: 0; }
+  .content.padded { padding: 14px; }
+
+  /* Bottom nav */
+  .bottom-nav {
+    flex-shrink: 0;
+    display: flex;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 8px 4px 10px;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+  .nav-item .nav-icon { font-size: 16px; }
+  .nav-item.active { color: var(--accent-2); }
+
+  /* Home rows */
+  .row-block { padding: 14px 0; }
+  .row-heading {
+    font-size: 13px;
+    font-weight: 800;
+    padding: 0 14px 10px;
+    font-family: "Bungee", sans-serif;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+  .poster-row { display: flex; gap: 10px; overflow-x: auto; padding: 0 14px; }
+  .poster-card { width: 90px; flex-shrink: 0; }
+  .poster-art {
+    width: 90px; height: 128px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #3a3a42, #1c1c1f);
+  }
+  .poster-title { font-size: 11px; margin-top: 6px; font-weight: 600; }
+  .poster-sub { font-size: 10px; color: var(--text-dim); }
+
+  /* Detail */
+  .backdrop {
+    height: 180px;
+    background: linear-gradient(180deg, rgba(14,14,16,0) 0%, var(--bg) 92%),
+                linear-gradient(135deg, #4a3a4e, #1c1c1f);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .backdrop .backbtn-float {
+    position: absolute;
+    top: 10px; left: 10px;
+    width: 30px; height: 30px;
+    border-radius: 10px;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .detail-title {
+    font-size: 20px;
+    font-family: "Bungee", sans-serif;
+    font-weight: 400;
+    padding: 0 14px;
+    margin: 0;
+  }
+  .detail-meta { font-size: 12px; color: var(--text-dim); padding: 4px 14px 0; }
+  .chip-row { display: flex; gap: 6px; padding: 10px 14px 0; flex-wrap: wrap; }
+  .chip {
+    font-size: 10px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    padding: 4px 10px;
+    border-radius: 8px;
+  }
+  .detail-overview {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    padding: 12px 14px 0;
+  }
+  .action-row { display: flex; gap: 8px; padding: 14px; }
+  .btn-primary {
+    flex: 1;
+    background: var(--text);
+    color: #101012;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 8px;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-secondary {
+    flex: 1;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .btn-accent {
+    flex: 1;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 8px;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-full {
+    width: calc(100% - 28px);
+    margin: 0 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-full.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .btn-full.good {
+    background: rgba(62,207,142,0.15);
+    border-color: rgba(62,207,142,0.4);
+    color: var(--good);
+  }
+  .btn-full:disabled, .btn-disabled {
+    opacity: 0.4;
+  }
+
+  /* Create room */
+  .room-code-block { text-align: center; padding: 22px 14px 6px; }
+  .room-code-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .room-code {
+    font-family: "Bungee", sans-serif;
+    font-size: 36px;
+    letter-spacing: 0.08em;
+    margin-top: 8px;
+    color: var(--accent-2);
+  }
+  .room-code .sep { color: var(--text-dim); letter-spacing: 0.12em; }
+  .qr-mock {
+    width: 130px; height: 130px;
+    margin: 16px auto 12px;
+    background: #fff;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px;
+  }
+  .qr-grid {
+    width: 100%; height: 100%;
+    background-image:
+      repeating-linear-gradient(0deg, #111 0 5px, transparent 5px 10px),
+      repeating-linear-gradient(90deg, #111 0 5px, transparent 5px 10px);
+    background-blend-mode: multiply;
+    opacity: 0.88;
+  }
+  .waiting-row {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 6px 14px 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .waiting-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-2);
+    animation: pulse 1.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  .waiting-dot.good { background: var(--good); animation: none; }
+  @keyframes pulse { 0%,100% { opacity: 0.3 } 50% { opacity: 1 } }
+
+  /* Participant list */
+  .participants {
+    margin: 4px 14px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .part-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .part-row:last-child { border-bottom: none; }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .avatar.host { background: rgba(233,69,96,0.2); color: var(--accent); }
+  .avatar.guest { background: rgba(78,161,255,0.18); color: var(--accent-2); }
+  .part-name { flex: 1; font-weight: 600; }
+  .part-role { font-size: 10px; color: var(--text-dim); }
+  .part-status {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 7px;
+    border-radius: 6px;
+  }
+  .part-status.you { background: var(--surface-2); color: var(--text-dim); }
+  .part-status.ready { background: rgba(62,207,142,0.15); color: var(--good); }
+  .part-status.joined { background: rgba(78,161,255,0.15); color: var(--accent-2); }
+  .part-status.left { background: rgba(233,69,96,0.12); color: var(--accent); }
+
+  /* Share sheet */
+  .share-list { padding: 4px 0 8px; }
+  .share-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .share-row:last-child { border-bottom: none; }
+  .share-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .share-sub { font-size: 11px; color: var(--text-dim); font-weight: 500; margin-top: 1px; }
+
+  /* Join sheet */
+  .sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: flex-end;
+  }
+  .sheet {
+    width: 100%;
+    background: var(--surface);
+    border-radius: 18px 18px 0 0;
+    padding: 14px 14px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .sheet-handle {
+    width: 36px; height: 4px; border-radius: 4px;
+    background: var(--surface-3);
+    margin: 0 auto 12px;
+  }
+  .sheet h2 {
+    font-size: 15px;
+    margin: 0 0 4px;
+    font-family: "Bungee", sans-serif;
+    font-weight: 400;
+  }
+  .sheet .sub { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
+  .code-input { display: flex; gap: 6px; margin-bottom: 12px; }
+  .code-input .digit {
+    flex: 1;
+    aspect-ratio: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800;
+    font-family: "Bungee", sans-serif;
+  }
+  .code-input .digit.filled { border-color: var(--accent-2); color: var(--accent-2); }
+  .code-input .digit.cursor { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .divider-or {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin: 10px 0;
+  }
+
+  /* Connecting / match */
+  .center-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    gap: 10px;
+  }
+  .spinner {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 3px solid var(--surface-3);
+    border-top-color: var(--accent-2);
+    animation: spin .8s linear infinite;
+    margin-bottom: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .check-circle {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--good);
+    color: #06281a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800;
+    margin-bottom: 6px;
+  }
+  .center-state b { font-size: 15px; }
+  .center-state .sub { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+  .match-card {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    text-align: left;
+    width: 100%;
+  }
+  .match-poster {
+    width: 48px; height: 68px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #3a3a40, #1c1c1f);
+    flex-shrink: 0;
+  }
+  .match-title { font-size: 13px; font-weight: 700; }
+  .match-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .match-tag {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--good);
+    background: rgba(62,207,142,0.12);
+    border-radius: 6px;
+    padding: 2px 7px;
+  }
+  .match-tag.warn {
+    color: var(--accent);
+    background: rgba(233,69,96,0.12);
+  }
+
+  /* Session pill on detail */
+  .session-pill {
+    margin: 0 14px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(62,207,142,0.10);
+    border: 1px solid rgba(62,207,142,0.35);
+    border-radius: 10px;
+    padding: 11px 12px;
+  }
+  .session-pill .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--good);
+    flex-shrink: 0;
+  }
+  .session-pill .sp-txt { flex: 1; font-size: 12.5px; font-weight: 700; }
+  .session-pill .sp-sub { font-size: 10.5px; color: var(--good); font-weight: 600; }
+  .session-pill .chev { color: var(--text-dim); }
+
+  /* Player */
+  .player-frame {
+    flex: 1;
+    background: #000;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .player-video {
+    flex: 1;
+    background: linear-gradient(135deg, #26262b, #0c0c0d);
+    position: relative;
+  }
+  .player-video .hint {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: rgba(242,242,242,0.28);
+    text-align: center; line-height: 1.5; padding: 20px;
+  }
+  .player-top {
+    position: absolute;
+    top: 12px; left: 10px; right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 2;
+    gap: 8px;
+  }
+  .watching-with-pill {
+    background: rgba(20,20,22,0.88);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex; align-items: center; gap: 6px;
+    max-width: 70%;
+  }
+  .watching-with-pill .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+    flex-shrink: 0;
+  }
+  .player-controls {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 12px 14px 16px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.9), transparent);
+    z-index: 2;
+  }
+  .seek-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .seek-time { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .seek-bar {
+    flex: 1; height: 3px; border-radius: 2px;
+    background: rgba(255,255,255,0.25);
+    position: relative;
+  }
+  .seek-bar i {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 42%; background: var(--accent); border-radius: 2px;
+  }
+  .transport-row {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .transport-row .controls-left {
+    display: flex; gap: 16px; align-items: center; font-size: 18px;
+  }
+  .transport-row .controls-left.dim { opacity: 0.35; }
+  .invite-btn {
+    width: 30px; height: 30px; border-radius: 10px;
+    background: rgba(78,161,255,0.18);
+    border: 1px solid var(--accent-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .track-row {
+    display: flex; gap: 6px; margin-top: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .track-row .lbl { font-size: 10px; color: var(--text-dim); }
+  .track-chip {
+    font-size: 10px; color: var(--text-dim);
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+  .track-chip.sel { color: var(--text); border-color: var(--accent-2); background: rgba(78,161,255,0.15); }
+
+  /* In-app toast / snackbar */
+  .snack {
+    position: absolute;
+    left: 10px; right: 10px;
+    bottom: 14px;
+    background: rgba(20,20,22,0.96);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 20;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  }
+  .snack.top { bottom: auto; top: 40px; }
+  .snack.good { border-color: rgba(62,207,142,0.4); }
+  .snack.blue { border-color: rgba(78,161,255,0.4); }
+  .snack.accent { border-color: rgba(233,69,96,0.4); }
+  .snack .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .snack .dot.good { background: var(--good); }
+  .snack .dot.blue { background: var(--accent-2); }
+  .snack .dot.accent { background: var(--accent); }
+  .snack .txt { flex: 1; min-width: 0; }
+  .snack .txt b { display: block; font-size: 12px; }
+  .snack .txt span { font-size: 11px; color: var(--text-dim); }
+  .snack .action {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-2);
+    flex-shrink: 0;
+  }
+  .snack .action.good { color: var(--good); }
+
+  /* Android-style notification shade mock */
+  .notif-shade {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px 12px;
+    z-index: 25;
+    border-radius: 0 0 16px 16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+  }
+  .notif-app {
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .notif-title { font-size: 13px; font-weight: 700; }
+  .notif-body { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.4; }
+  .notif-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .notif-actions .na {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .notif-actions .na.primary {
+    background: rgba(78,161,255,0.15);
+    border-color: rgba(78,161,255,0.35);
+    color: var(--accent-2);
+  }
+
+  /* Persistent live bar (other screens) */
+  .live-bar {
+    position: absolute;
+    left: 10px; right: 10px;
+    bottom: 58px;
+    background: rgba(20,20,22,0.96);
+    border: 1px solid rgba(62,207,142,0.4);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 15;
+  }
+  .live-bar .play-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: rgba(62,207,142,0.15);
+    color: var(--good);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  /* Arrow between frames */
+  .arrow-between {
+    display: flex;
+    align-items: center;
+    color: var(--text-dim);
+    font-size: 22px;
+    margin-top: 280px;
+    flex-shrink: 0;
+  }
+
+  .note-strip {
+    max-width: 1100px;
+    margin: 0 auto 40px;
+    background: rgba(233,69,96,0.08);
+    border: 1px solid rgba(233,69,96,0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+  .note-strip b { color: var(--text); }
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <h1>Watch Together</h1>
+    <p>
+      Full flow storyboard — create room → share code/QR → guest joins → item match →
+      live session → synced player → join notifs → background toast. Scroll left→right
+      through each stage. Host frames are red-tagged, guest blue, both green.
+    </p>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STAGE 1: CREATE ROOM -->
+  <!-- ============================================================ -->
+  <div class="section-head">
+    <h2>1 · Create room</h2>
+    <span>Host picks a title and opens a broadcast session</span>
+  </div>
+  <div class="flow-row">
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>1a · Detail</b> — tap Watch Together
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="backdrop"><div class="backbtn-float">←</div></div>
+        <div class="content">
+          <h2 class="detail-title">Jack Reacher</h2>
+          <div class="detail-meta">2012 · 2h 10m · ★ 6.7</div>
+          <div class="chip-row"><span class="chip">Action</span><span class="chip">Thriller</span></div>
+          <p class="detail-overview">Five people are shot dead in a seemingly random attack. All evidence points to an ex-military sniper…</p>
+          <div class="action-row">
+            <button class="btn-primary">▶ Play</button>
+            <button class="btn-secondary">👥 Watch Together</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-between">→</div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>1b · Create Room</b> — code + QR + waiting
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Watch Together</h1><div class="sub">Jack Reacher</div></div></div>
+        </div>
+        <div class="content">
+          <div class="room-code-block">
+            <div class="room-code-label">Room code</div>
+            <div class="room-code">7F<span class="sep"> · </span>K9<span class="sep"> · </span>Q2</div>
+          </div>
+          <div class="qr-mock"><div class="qr-grid"></div></div>
+          <div class="waiting-row"><span class="waiting-dot"></span> Waiting for someone to join…</div>
+          <button class="btn-full">🔗 Share invite</button>
+          <div style="padding:14px 14px 0; font-size:11px; color:var(--text-dim); line-height:1.5; text-align:center;">
+            Code or QR encodes the room URL.<br>Guest needs the same title in their library.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-between">→</div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>1c · Share invite</b> — how guests get the code
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Share invite</h1><div class="sub">Room 7F · K9 · Q2</div></div></div>
+        </div>
+        <div class="content">
+          <div style="padding:14px 14px 8px; font-size:12px; color:var(--text-dim); line-height:1.5;">
+            Anyone with the code or link can join — they must already have <b style="color:var(--text)">Jack Reacher</b> in their library.
+          </div>
+          <div class="share-list">
+            <div class="share-row">
+              <div class="share-icon">💬</div>
+              <div>
+                <div>Messages / WhatsApp</div>
+                <div class="share-sub">Send “Join me: 7F K9 Q2”</div>
+              </div>
+            </div>
+            <div class="share-row">
+              <div class="share-icon">📋</div>
+              <div>
+                <div>Copy code</div>
+                <div class="share-sub">7F · K9 · Q2</div>
+              </div>
+            </div>
+            <div class="share-row">
+              <div class="share-icon">🔗</div>
+              <div>
+                <div>Copy link</div>
+                <div class="share-sub">mofy://wt/7FK9Q2</div>
+              </div>
+            </div>
+            <div class="share-row">
+              <div class="share-icon">▢</div>
+              <div>
+                <div>Show QR again</div>
+                <div class="share-sub">Hold up to their camera</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STAGE 2: JOIN -->
+  <!-- ============================================================ -->
+  <div class="section-head">
+    <h2>2 · Guest joins</h2>
+    <span>Code pairing from Home, then item match on their library</span>
+  </div>
+  <div class="flow-row">
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>2a · Home</b> — 👥 opens join
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div><h1>Mofy</h1></div>
+          <div style="display:flex; gap:8px;">
+            <div class="icon-btn" style="border-color:var(--accent-2); color:var(--accent-2);">👥</div>
+            <div class="icon-btn">🔍</div>
+          </div>
+        </div>
+        <div class="content">
+          <div class="row-block">
+            <div class="row-heading">Continue Watching</div>
+            <div class="poster-row">
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">The Bear</div><div class="poster-sub">12m left</div></div>
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Dune</div><div class="poster-sub">41m left</div></div>
+            </div>
+          </div>
+          <div class="row-block">
+            <div class="row-heading">Recommended</div>
+            <div class="poster-row">
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Memento</div><div class="poster-sub">2000</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">🧭</div>Browse</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Library</div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div>Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-between">→</div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>2b · Join sheet</b> — type code (auto-advance)
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar"><div><h1>Mofy</h1></div><div class="icon-btn">🔍</div></div>
+        <div style="flex:1; position:relative;">
+          <div class="sheet-backdrop">
+            <div class="sheet">
+              <div class="sheet-handle"></div>
+              <h2>Join Watch Together</h2>
+              <div class="sub">Enter the 6-character code you were sent</div>
+              <div class="code-input">
+                <div class="digit filled">7</div>
+                <div class="digit filled">F</div>
+                <div class="digit filled">K</div>
+                <div class="digit filled">9</div>
+                <div class="digit filled">Q</div>
+                <div class="digit cursor">2</div>
+              </div>
+              <button class="btn-accent" style="width:100%; margin-bottom:4px;">Join</button>
+              <div class="divider-or">or</div>
+              <button class="btn-full" style="width:100%; margin:0;">▢ Scan QR Code</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-between">→</div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>2c · Connecting</b> — handshake + find local copy
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Joining…</h1><div class="sub">Room 7F · K9 · Q2</div></div></div>
+        </div>
+        <div class="center-state">
+          <div class="spinner"></div>
+          <b>Connecting to host</b>
+          <div class="sub">Looking up room · matching title in your library</div>
+          <div class="match-card">
+            <div class="match-poster"></div>
+            <div>
+              <div class="match-title">Jack Reacher</div>
+              <div class="match-sub">Host is watching this</div>
+              <span class="match-tag">✓ Found in your library</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-between">→</div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>2d · No local copy</b> — hard fail (no video transfer)
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Can't join</h1><div class="sub">Room 7F · K9 · Q2</div></div></div>
+        </div>
+        <div class="center-state">
+          <div style="font-size:32px; margin-bottom:4px;">🚫</div>
+          <b>You don't have this title</b>
+          <div class="sub">Mofy never sends video between devices. Add <b style="color:var(--text)">Jack Reacher</b> to your library first, then rejoin.</div>
+          <div class="match-card">
+            <div class="match-poster"></div>
+            <div>
+              <div class="match-title">Jack Reacher</div>
+              <div class="match-sub">2012 · Action</div>
+              <span class="match-tag warn">Not in your library</span>
+            </div>
+          </div>
+          <button class="btn-full" style="width:100%; margin:16px 0 0;">Search library / Browse</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STAGE 3: JOINED / LOBBY -->
+  <!-- ============================================================ -->
+  <div class="section-head">
+    <h2>3 · Lobby — both ready</h2>
+    <span>Host sees who joined; both can start; multi-guest list</span>
+  </div>
+  <div class="flow-row">
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>3a · Guest joined toast</b> — live notification on create screen
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Watch Together</h1><div class="sub">Jack Reacher</div></div></div>
+        </div>
+        <div class="content" style="position:relative;">
+          <div class="room-code-block">
+            <div class="room-code-label">Room code</div>
+            <div class="room-code">7F<span class="sep"> · </span>K9<span class="sep"> · </span>Q2</div>
+          </div>
+          <div class="participants">
+            <div class="part-row">
+              <div class="avatar host">A</div>
+              <div style="flex:1"><div class="part-name">You</div><div class="part-role">Host</div></div>
+              <span class="part-status you">you</span>
+            </div>
+            <div class="part-row">
+              <div class="avatar guest">P</div>
+              <div style="flex:1"><div class="part-name">Priya</div><div class="part-role">Guest · just joined</div></div>
+              <span class="part-status joined">joined</span>
+            </div>
+          </div>
+          <div class="waiting-row"><span class="waiting-dot good"></span> 2 watching · ready to start</div>
+          <button class="btn-full primary">▶ Start watching</button>
+          <button class="btn-full" style="margin-top:8px;">🔗 Invite another</button>
+        </div>
+        <div class="snack top good">
+          <span class="dot good"></span>
+          <div class="txt"><b>Priya joined</b><span>Ready when you are</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>3b · Joined lobby</b> — waiting for host to start
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Watch Together</h1><div class="sub">Jack Reacher</div></div></div>
+        </div>
+        <div class="content">
+          <div class="center-state" style="padding-top:28px; justify-content:flex-start;">
+            <div class="check-circle">✓</div>
+            <b>You're in</b>
+            <div class="sub">Connected to Alex's room. Waiting for host to start playback.</div>
+          </div>
+          <div class="participants">
+            <div class="part-row">
+              <div class="avatar host">A</div>
+              <div style="flex:1"><div class="part-name">Alex</div><div class="part-role">Host</div></div>
+              <span class="part-status ready">host</span>
+            </div>
+            <div class="part-row">
+              <div class="avatar guest">P</div>
+              <div style="flex:1"><div class="part-name">You</div><div class="part-role">Guest</div></div>
+              <span class="part-status you">you</span>
+            </div>
+          </div>
+          <div class="waiting-row"><span class="waiting-dot"></span> Waiting for host to press play…</div>
+          <button class="btn-full" style="opacity:0.5;">Leave session</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>3c · Multi-guest</b> — third person joins mid-lobby
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Watch Together</h1><div class="sub">Jack Reacher</div></div></div>
+        </div>
+        <div class="content" style="position:relative;">
+          <div class="room-code-block" style="padding-top:14px;">
+            <div class="room-code-label">Room code</div>
+            <div class="room-code" style="font-size:28px;">7F<span class="sep"> · </span>K9<span class="sep"> · </span>Q2</div>
+          </div>
+          <div class="participants">
+            <div class="part-row">
+              <div class="avatar host">A</div>
+              <div style="flex:1"><div class="part-name">You</div><div class="part-role">Host</div></div>
+              <span class="part-status you">you</span>
+            </div>
+            <div class="part-row">
+              <div class="avatar guest">P</div>
+              <div style="flex:1"><div class="part-name">Priya</div><div class="part-role">Guest</div></div>
+              <span class="part-status ready">ready</span>
+            </div>
+            <div class="part-row">
+              <div class="avatar guest" style="background:rgba(62,207,142,0.18); color:var(--good);">J</div>
+              <div style="flex:1"><div class="part-name">Jordan</div><div class="part-role">Guest · just joined</div></div>
+              <span class="part-status joined">joined</span>
+            </div>
+          </div>
+          <div class="waiting-row"><span class="waiting-dot good"></span> 3 watching</div>
+          <button class="btn-full primary">▶ Start watching</button>
+        </div>
+        <div class="snack top blue">
+          <span class="dot blue"></span>
+          <div class="txt"><b>Jordan joined</b><span>3 people in the room now</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STAGE 4: WATCHING -->
+  <!-- ============================================================ -->
+  <div class="section-head">
+    <h2>4 · Watching — synced playback</h2>
+    <span>In-app player = libVLC (ADR 0006). Anyone can play/pause/seek. Subs are per-device.</span>
+  </div>
+  <div class="flow-row">
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>4a · Player</b> — controls live, invite still available
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="player-frame">
+          <div class="player-video"><span class="hint">in-app player<br>mpv / VLC core</span></div>
+          <div class="player-top">
+            <div class="icon-btn" style="background:rgba(0,0,0,0.5); border-color:transparent;">←</div>
+            <div class="watching-with-pill"><span class="live-dot"></span> Watching with Priya +1</div>
+          </div>
+          <div class="player-controls">
+            <div class="seek-row">
+              <span class="seek-time">42:10</span>
+              <div class="seek-bar"><i></i></div>
+              <span class="seek-time">1:52:00</span>
+            </div>
+            <div class="transport-row">
+              <div class="controls-left">⏪ ⏸ ⏩</div>
+              <div class="invite-btn">👥</div>
+            </div>
+            <div class="track-row">
+              <span class="lbl">Subs</span>
+              <span class="track-chip sel">English</span>
+              <span class="track-chip">None</span>
+              <span class="lbl" style="margin-left:auto; opacity:.7">your device only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>4b · Player</b> — transport dimmed (host-led); own subs
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="player-frame">
+          <div class="player-video"><span class="hint">libVLC · same file locally<br>synced position · anyone can scrub</span></div>
+          <div class="player-top">
+            <div class="icon-btn" style="background:rgba(0,0,0,0.5); border-color:transparent;">←</div>
+            <div class="watching-with-pill"><span class="live-dot"></span> Watching with Alex</div>
+          </div>
+          <div class="player-controls">
+            <div class="seek-row">
+              <span class="seek-time">42:10</span>
+              <div class="seek-bar"><i></i></div>
+              <span class="seek-time">1:52:00</span>
+            </div>
+            <div class="transport-row">
+              <div class="controls-left">⏪ ⏸ ⏩</div>
+              <div style="font-size:10px; color:var(--good);">synced</div>
+            </div>
+            <div class="track-row">
+              <span class="lbl">Subs</span>
+              <span class="track-chip">English</span>
+              <span class="track-chip sel">Français</span>
+              <span class="lbl" style="margin-left:auto; opacity:.7">your device only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who both">Both</span>
+        <b>4c · Anyone pauses</b> — others auto-pause (sync event)
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="player-frame">
+          <div class="player-video">
+            <span class="hint" style="color:rgba(242,242,242,0.5);">⏸ Paused by Priya</span>
+          </div>
+          <div class="player-top">
+            <div class="icon-btn" style="background:rgba(0,0,0,0.5); border-color:transparent;">←</div>
+            <div class="watching-with-pill"><span class="live-dot"></span> Watching with Priya</div>
+          </div>
+          <div class="player-controls">
+            <div class="seek-row">
+              <span class="seek-time">42:10</span>
+              <div class="seek-bar"><i></i></div>
+              <span class="seek-time">1:52:00</span>
+            </div>
+            <div class="transport-row">
+              <div class="controls-left">⏪ ▶ ⏩</div>
+              <div style="font-size:10px; color:var(--accent-2);">synced</div>
+            </div>
+          </div>
+          <div class="snack blue" style="bottom:90px;">
+            <span class="dot blue"></span>
+            <div class="txt"><b>Priya paused</b><span>Playback synced</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>4d · Invite mid-watch</b> — 👥 on player reopens room
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="player-frame">
+          <div class="player-video" style="opacity:.35;"></div>
+          <div style="position:absolute; inset:0; background:rgba(0,0,0,0.55); z-index:3; display:flex; align-items:flex-end;">
+            <div class="sheet" style="position:relative;">
+              <div class="sheet-handle"></div>
+              <h2>Invite to this session</h2>
+              <div class="sub">Still live · 42:10 into Jack Reacher</div>
+              <div class="room-code" style="font-size:28px; text-align:center; color:var(--accent-2); margin:8px 0 12px;">7F · K9 · Q2</div>
+              <button class="btn-full" style="width:100%; margin:0 0 8px;">🔗 Share invite</button>
+              <button class="btn-full" style="width:100%; margin:0;">▢ Show QR</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STAGE 5: LEAVE PLAYER / BACKGROUND / NOTIFS -->
+  <!-- ============================================================ -->
+  <div class="section-head">
+    <h2>5 · Outside the player</h2>
+    <span>Session stays live — pill on Detail, persistent bar on other screens, system notifs</span>
+  </div>
+  <div class="flow-row">
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who both">Both</span>
+        <b>5a · Detail pill</b> — leave player, session still active
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="backdrop"><div class="backbtn-float">←</div></div>
+        <div class="content">
+          <h2 class="detail-title">Jack Reacher</h2>
+          <div class="detail-meta">2012 · 2h 10m</div>
+          <div class="action-row">
+            <button class="btn-primary">▶ Play</button>
+            <button class="btn-secondary" style="opacity:.5;">👥 In session</button>
+          </div>
+          <div class="session-pill">
+            <span class="live-dot"></span>
+            <div class="sp-txt">Watching with Priya +1</div>
+            <span class="sp-sub">live · 42:10</span>
+            <span class="chev">›</span>
+          </div>
+          <p class="detail-overview" style="padding-top:4px;">Tap the green pill to jump back into the player. Session keeps syncing in the background.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who both">Both</span>
+        <b>5b · Live bar on Home</b> — persistent toast on other tabs
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div><h1>Mofy</h1></div>
+          <div style="display:flex; gap:8px;">
+            <div class="icon-btn">👥</div>
+            <div class="icon-btn">🔍</div>
+          </div>
+        </div>
+        <div class="content">
+          <div class="row-block">
+            <div class="row-heading">Continue Watching</div>
+            <div class="poster-row">
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">The Bear</div><div class="poster-sub">12m left</div></div>
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Dune</div><div class="poster-sub">41m left</div></div>
+            </div>
+          </div>
+          <div class="row-block">
+            <div class="row-heading">Recommended</div>
+            <div class="poster-row">
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">Se7en</div><div class="poster-sub">1995</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="live-bar">
+          <div class="play-icon">▶</div>
+          <div class="txt" style="flex:1; min-width:0;">
+            <b style="display:block; font-size:12px;">Watching with Priya +1</b>
+            <span style="font-size:11px; color:var(--text-dim);">Jack Reacher · live · tap to return</span>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">🧭</div>Browse</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Library</div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div>Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>5c · System notif</b> — someone joins while you're elsewhere
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="notif-shade">
+          <div class="notif-app"><span>▶</span> Mofy · now</div>
+          <div class="notif-title">Jordan joined your session</div>
+          <div class="notif-body">Watch Together · Jack Reacher · 3 people now</div>
+          <div class="notif-actions">
+            <div class="na">Dismiss</div>
+            <div class="na primary">Open room</div>
+          </div>
+        </div>
+        <div class="content" style="padding-top:140px; opacity:0.45;">
+          <div class="row-block">
+            <div class="row-heading">Continue Watching</div>
+            <div class="poster-row">
+              <div class="poster-card"><div class="poster-art"></div><div class="poster-title">The Bear</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">🧭</div>Browse</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Library</div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div>Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who both">Both</span>
+        <b>5d · Ongoing media notif</b> — session playing in background
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="notif-shade">
+          <div class="notif-app"><span>●</span> Mofy · ongoing</div>
+          <div class="notif-title">Watch Together · Jack Reacher</div>
+          <div class="notif-body">With Priya +1 · 42:10 · playing</div>
+          <div class="notif-actions">
+            <div class="na">⏸ Pause</div>
+            <div class="na primary">Return</div>
+          </div>
+        </div>
+        <div style="flex:1; background:#111; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:12px; padding:20px; text-align:center; line-height:1.5;">
+          Android lockscreen / shade<br>while app is backgrounded
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- STAGE 6: DISCONNECT / END -->
+  <!-- ============================================================ -->
+  <div class="section-head">
+    <h2>6 · Leave & disconnect</h2>
+    <span>Someone drops · host ends room · clean teardown</span>
+  </div>
+  <div class="flow-row">
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>6a · Guest left toast</b> — mid-session disconnect
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="player-frame">
+          <div class="player-video"><span class="hint">still playing</span></div>
+          <div class="player-top">
+            <div class="icon-btn" style="background:rgba(0,0,0,0.5); border-color:transparent;">←</div>
+            <div class="watching-with-pill"><span class="live-dot"></span> Watching with Priya</div>
+          </div>
+          <div class="player-controls">
+            <div class="seek-row">
+              <span class="seek-time">48:02</span>
+              <div class="seek-bar"><i style="width:48%"></i></div>
+              <span class="seek-time">1:52:00</span>
+            </div>
+            <div class="transport-row">
+              <div class="controls-left">⏪ ⏸ ⏩</div>
+              <div class="invite-btn">👥</div>
+            </div>
+          </div>
+          <div class="snack accent" style="bottom:88px;">
+            <span class="dot accent"></span>
+            <div class="txt"><b>Jordan left</b><span>2 people remaining</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who guest">Guest</span>
+        <b>6b · Host ended room</b> — guest kicked to summary
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="center-state">
+          <div style="font-size:28px;">👋</div>
+          <b>Session ended</b>
+          <div class="sub">Alex ended the Watch Together room. Your progress at 48:02 is saved on this device only.</div>
+          <div class="match-card">
+            <div class="match-poster"></div>
+            <div>
+              <div class="match-title">Jack Reacher</div>
+              <div class="match-sub">Stopped at 48:02</div>
+              <span class="match-tag">Progress saved locally</span>
+            </div>
+          </div>
+          <button class="btn-full primary" style="width:100%; margin:16px 0 0;">Back to details</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="who host">Host</span>
+        <b>6c · End session confirm</b>
+      </div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●●</span></div>
+        <div class="topbar">
+          <div class="back"><span class="arrow">←</span><div><h1>Watch Together</h1><div class="sub">Jack Reacher</div></div></div>
+        </div>
+        <div class="content">
+          <div class="participants" style="margin-top:16px;">
+            <div class="part-row">
+              <div class="avatar host">A</div>
+              <div style="flex:1"><div class="part-name">You</div><div class="part-role">Host</div></div>
+              <span class="part-status you">you</span>
+            </div>
+            <div class="part-row">
+              <div class="avatar guest">P</div>
+              <div style="flex:1"><div class="part-name">Priya</div><div class="part-role">Guest</div></div>
+              <span class="part-status ready">connected</span>
+            </div>
+            <div class="part-row">
+              <div class="avatar guest" style="opacity:.5;">J</div>
+              <div style="flex:1; opacity:.5;"><div class="part-name">Jordan</div><div class="part-role">Guest</div></div>
+              <span class="part-status left">left</span>
+            </div>
+          </div>
+          <button class="btn-full primary" style="margin-top:16px;">▶ Resume watching</button>
+          <button class="btn-full" style="margin-top:8px; color:var(--accent); border-color:rgba(233,69,96,0.4);">End session for everyone</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note-strip">
+    <b>Open decisions still on you before Stage B/C:</b>
+    Locked in ADR 0006: WebRTC DataChannel (star, Google STUN), anyone can
+    seek, max 10 participants, libVLC in-app player, no media frames.
+    Existing related frames also live in <b>design/browse-flow-mockup.html</b> (frames 5–8).
+  </div>
+
+</body>
+</html>

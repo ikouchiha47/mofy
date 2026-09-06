@@ -71,6 +71,15 @@ data class LibraryItem(
     // little-endian. Null until the background embedding job completes.
     // Used to include user-added titles (not in catalog.db) in semantic search.
     val embeddingBlob: ByteArray? = null,
+    // Last playback position, for Home's "Continue Watching" row - see
+    // LibraryDao.updateProgress/observeContinueWatching. Denormalized onto
+    // the item itself rather than a separate watch_progress table (this
+    // project's SQL convention) - the previous watch_progress table's
+    // libraryItemId column was a Long while this id is a String UUID, so
+    // its join could never match anything; nothing ever wrote to it.
+    val lastPositionMs: Long = 0L,
+    val lastDurationMs: Long = 0L,
+    val lastWatchedAtEpochMillis: Long? = null,
 ) {
     val posterUrl: String?
         get() = when (posterSource) {

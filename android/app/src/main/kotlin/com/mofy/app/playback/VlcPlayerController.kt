@@ -5,6 +5,7 @@ import android.net.Uri
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.util.VLCVideoLayout
 
 /**
@@ -21,7 +22,12 @@ import org.videolan.libvlc.util.VLCVideoLayout
  * content:// branch below is kept only for any content:// uri that reaches
  * this class from elsewhere (e.g. old library rows saved before this).
  */
-class VlcPlayerController(context: Context, mediaUri: String) : PlayerController {
+class VlcPlayerController(
+    context: Context,
+    mediaUri: String,
+    subtitleUri: String? = null,
+    subtitle2Uri: String? = null,
+) : PlayerController {
 
     private val libVlc: LibVLC = LibVLC(context.applicationContext)
     private val player: MediaPlayer = MediaPlayer(libVlc)
@@ -33,7 +39,7 @@ class VlcPlayerController(context: Context, mediaUri: String) : PlayerController
         // events on its own thread as soon as media is assigned, before
         // this constructor even returns to the caller.
         player.setEventListener { event ->
-            android.util.Log.d("VlcPlayerController", "event type=${event.type}")
+            android.util.Log.e("VlcPlayerController", "event type=${event.type}")
         }
         val uri = Uri.parse(mediaUri)
         val media = if (uri.scheme == "content") {
@@ -44,6 +50,17 @@ class VlcPlayerController(context: Context, mediaUri: String) : PlayerController
         } else {
             Media(libVlc, uri)
         }
+        // External subtitle files are LibraryLink.movieUri siblings
+        // (subtitleUri/subtitle2Uri, one per RoleRow in LinkScreen's folder
+        // picking) that were never wired into actual playback before -
+        // stored in the library link, never read back at Play time. libVLC
+        // needs each attached as a "slave" on the Media object before
+        // playback starts, not toggled later via setSpuTrack (that only
+        // switches between tracks already embedded in the video file).
+        // Priority descends so the primary subtitle (subtitleUri) is
+        // libVLC's preferred default track over the second one.
+        subtitleUri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 2, Uri.parse(it).toString())) }
+        subtitle2Uri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 1, Uri.parse(it).toString())) }
         try {
             player.media = media
         } finally {
@@ -72,6 +89,10 @@ class VlcPlayerController(context: Context, mediaUri: String) : PlayerController
         if (positionMs < 0) return
         player.setTime(positionMs)
     }
+
+    /** id -> readable name for every subtitle track libVLC knows about, including its own "Disable" (id=-1) entry. */
+    fun subtitleTracks(): List<Pair<Int, String>> =
+        player.spuTracks?.map { it.id to it.name }.orEmpty()
 
     override fun setSubtitleTrack(index: Int?) {
         if (index != null) {

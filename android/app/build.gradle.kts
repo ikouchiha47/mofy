@@ -82,6 +82,14 @@ android {
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
+            // TEMPORARY (Watch Together testing): this OEM/device suppresses
+            // Log.d output entirely for non-debuggable release builds -
+            // confirmed by even pre-existing, unrelated Log.d calls never
+            // appearing in logcat. isDebuggable doesn't change signing or
+            // minification, so this reinstalls in place over the existing
+            // release build with no uninstall needed. Remove before a real
+            // release.
+            isDebuggable = true
         }
     }
 

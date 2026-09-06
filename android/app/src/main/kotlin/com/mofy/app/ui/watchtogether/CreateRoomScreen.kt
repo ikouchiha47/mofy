@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -114,6 +115,35 @@ fun CreateRoomScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             ) {
                 Text("▶ Start watching")
+            }
+
+            // For manually testing against design/watch-together-desktop-test.html,
+            // which has no library of its own to compute a matching itemHash
+            // from - a real phone guest never needs to see either of these,
+            // it derives itemHash locally and gets the signaling URL from
+            // the invite link/QR. Selectable so both can be copy-pasted
+            // directly off the phone instead of needing adb logcat (which
+            // some OEM builds suppress entirely for third-party app logs -
+            // confirmed on this device, even for pre-existing unrelated
+            // Log.d calls).
+            SelectionContainer {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
+                    Text(
+                        "Debug (for desktop test client)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "signalingUrl: ${session.signalingUrl}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "itemHash: ${session.itemHash}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

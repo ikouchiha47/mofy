@@ -6,6 +6,7 @@ import com.mofy.app.watchtogether.Role
 import com.mofy.app.watchtogether.SessionLimits
 import com.mofy.app.watchtogether.protocol.WtMessage
 import com.mofy.app.watchtogether.protocol.WtMessageCodec
+import com.mofy.app.watchtogether.sync.SyncEngineConfig.HOST_DISCONNECT_GRACE_MS
 import com.mofy.app.watchtogether.sync.SyncEngineConfig.HOST_PEER_ID
 import com.mofy.app.watchtogether.transport.FakeWtTransport
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -228,6 +229,35 @@ class SyncEngineTest {
             .filterIsInstance<WtMessage.ParticipantEvent>()
             .filter { it.op == WtMessage.ParticipantEvent.Op.LEFT }
         assertEquals(1, left.size)
+    }
+
+    @Test
+    fun `9 guest loses host connection emits HostLost after grace not silence`() {
+        val transport = FakeWtTransport()
+        val events = mutableListOf<SyncEngine.SyncEvent>()
+        var nowMs = 1_000_000L
+        val guest = SyncEngine(
+            role = Role.GUEST,
+            roomKey = roomKey,
+            itemHash = itemHash,
+            localParticipant = Participant("guest-temp", "Priya", Role.GUEST),
+            player = FakePlayerController(),
+            transport = transport,
+            clock = { nowMs },
+            events = SyncEngine.Listener { events.add(it) },
+        )
+        guest.start()
+        transport.connectPeer(HOST_PEER_ID)
+
+        transport.disconnectPeer(HOST_PEER_ID)
+
+        // A momentary flap inside the grace window must not demote yet.
+        assertFalse(events.contains(SyncEngine.SyncEvent.HostLost))
+
+        // Host is really gone once grace elapses.
+        nowMs += HOST_DISCONNECT_GRACE_MS
+        guest.tick()
+        assertTrue(events.contains(SyncEngine.SyncEvent.HostLost))
     }
 
     private fun hostEngine(

@@ -48,4 +48,5 @@ object RoomKey {
 
 object SessionLimits {
     const val MAX_PARTICIPANTS = 10  // host + 9 guests
+    const val MAX_CONCURRENT_SESSIONS = 4  // sessions this device is in at once (host+guest combined)
 }

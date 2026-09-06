@@ -38,15 +38,26 @@ object PushedRoute {
     // rather than creating a new one).
     const val RESOLVE_MATCH = "resolve_match/{title}/{mediaType}/{existingItemId}"
 
-    // Watch Together (Phase 13) - see docs/tasks/13-watch-together.md C1.
-    // Join is a modal bottom sheet from Home, not its own route.
+    // Watch Together (Phase 13) - see docs/tasks/13-watch-together.md C1
+    // and docs/tasks/watch-together-redesign.md. Join is a modal bottom
+    // sheet reached from WT_LISTING, not its own route.
+    const val WT_LISTING = "watch_together/listing"
     const val WT_CREATE = "watch_together/create/{libraryItemId}"
-    const val WT_SESSION = "watch_together/session"
+    // Resumes an *existing* host session's waiting room from the Listing -
+    // WT_CREATE always creates a brand new session, which would double up
+    // signaling if reused here.
+    const val WT_ROOM = "watch_together/room/{roomKey}"
+    // roomKey (not "the" session) - a device can be in multiple concurrent
+    // Watch Together sessions (SessionLimits.MAX_CONCURRENT_SESSIONS).
+    const val WT_SESSION = "watch_together/session/{roomKey}"
     const val WT_SCAN = "watch_together/scan"
 
     // In-app VLC playback for a single local/content file, no Watch
-    // Together session - see SoloPlayerScreen's doc comment.
-    const val SOLO_PLAY = "solo_play/{uri}"
+    // Together session - see SoloPlayerScreen's doc comment. subtitleUri is
+    // "none" (sentinel, same convention as RESOLVE_MATCH's existingItemId)
+    // when the link has no subtitle. libraryItemId lets the player save
+    // watch progress back onto the right LibraryItem row.
+    const val SOLO_PLAY = "solo_play/{libraryItemId}/{uri}/{subtitleUri}/{subtitle2Uri}"
 
     fun discover(source: String = "ALL", sort: String = "MOST_VOTED", type: String = "ANY") =
         "discover/$source/$sort/$type"
@@ -55,5 +66,10 @@ object PushedRoute {
     fun resolveMatch(title: String, mediaType: String, existingItemId: String = "none") =
         "resolve_match/${java.net.URLEncoder.encode(title, "UTF-8")}/$mediaType/$existingItemId"
     fun watchTogetherCreate(libraryItemId: String) = "watch_together/create/$libraryItemId"
-    fun soloPlay(uri: String) = "solo_play/${java.net.URLEncoder.encode(uri, "UTF-8")}"
+    fun wtSession(roomKey: String) = "watch_together/session/$roomKey"
+    fun wtRoom(roomKey: String) = "watch_together/room/$roomKey"
+    fun soloPlay(libraryItemId: String, uri: String, subtitleUri: String? = null, subtitle2Uri: String? = null): String {
+        fun seg(s: String?) = s?.let { java.net.URLEncoder.encode(it, "UTF-8") } ?: "none"
+        return "solo_play/${seg(libraryItemId)}/${seg(uri)}/${seg(subtitleUri)}/${seg(subtitle2Uri)}"
+    }
 }

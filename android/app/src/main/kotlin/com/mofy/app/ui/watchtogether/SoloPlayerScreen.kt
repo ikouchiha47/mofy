@@ -14,16 +14,20 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mofy.app.playback.VlcPlayerController
 import com.mofy.app.ui.icons.AppIcons
+import com.mofy.app.watchtogether.WatchTogetherSession
 import kotlinx.coroutines.delay
 import org.videolan.libvlc.util.VLCVideoLayout
 
@@ -102,6 +107,8 @@ private fun SeekTrack(
 
 private const val SEEK_NUDGE_MS = 10_000L
 private const val POSITION_POLL_MS = 500L
+private const val PROGRESS_SAVE_MS = 5_000L
+private const val EVENT_TOAST_MS = 2_500L
 private const val GESTURE_ZONE_WIDTH_FRACTION = 0.3f
 private const val DRAG_TO_FULL_RANGE_PX = 600f
 
@@ -122,20 +129,44 @@ private const val DRAG_TO_FULL_RANGE_PX = 600f
 fun SoloPlayerScreen(
     contentPadding: PaddingValues,
     mediaUri: String,
+    subtitleUri: String? = null,
+    subtitle2Uri: String? = null,
+    createSession: ((com.mofy.app.playback.PlayerController) -> WatchTogetherSession)? = null,
     onBack: () -> Unit,
+    onInvite: (() -> Unit)? = null,
+    onProgress: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val audioManager = remember { context.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager }
     val videoLayout = remember { VLCVideoLayout(context) }
     var player by remember { mutableStateOf<VlcPlayerController?>(null) }
+    var session by remember { mutableStateOf<WatchTogetherSession?>(null) }
+    var subtitleMenuOpen by remember { mutableStateOf(false) }
+    var peopleMenuOpen by remember { mutableStateOf(false) }
+    var currentSubtitleTrack by remember { mutableStateOf<Int?>(null) }
 
-    DisposableEffect(mediaUri) {
-        val newPlayer = VlcPlayerController(context, mediaUri)
+    DisposableEffect(mediaUri, subtitleUri, subtitle2Uri) {
+        val newPlayer = VlcPlayerController(context, mediaUri, subtitleUri, subtitle2Uri)
         newPlayer.attachViews(videoLayout)
-        newPlayer.play()
+        val newSession = createSession?.invoke(newPlayer)
+        if (newSession == null) newPlayer.play()
         player = newPlayer
+        session = newSession
         onDispose {
+            // Session lifecycle is NOT owned here - ending it on mere
+            // navigation-away (Back/minimize) would kill the connection
+            // for every connected guest just from backgrounding. Confirmed
+            // bug on a real device: the desktop guest's WebSocket closed
+            // instantly on any dispose of this screen, not just an
+            // intentional Leave. Teardown is explicit only, via
+            // WatchTogetherSessionManager/ViewModel's remove()/clearAll()
+            // (Leave/Cancel actions) - only local player resources are
+            // released here, so the session can be rebound via
+            // rebindPlayer() if this screen is re-entered later.
+            runCatching {
+                if (newPlayer.durationMs > 0) onProgress(newPlayer.positionMs, newPlayer.durationMs)
+            }
             newPlayer.detachViews()
             newPlayer.release()
         }
@@ -145,14 +176,76 @@ fun SoloPlayerScreen(
         Box(modifier = Modifier.fillMaxSize().background(Color.Black))
         return
     }
+    val currentSession = session
 
     var uiPositionMs by remember { mutableStateOf(0L) }
     var uiIsPlaying by remember { mutableStateOf(false) }
     LaunchedEffect(currentPlayer) {
         while (true) {
-            uiPositionMs = currentPlayer.positionMs
-            uiIsPlaying = currentPlayer.isPlaying
+            // The underlying native VLC object can be released out from
+            // under this loop by something other than this composable's
+            // own onDispose (e.g. a Watch Together teardown firing while
+            // this screen is still composed but minimized/backgrounded) -
+            // confirmed crash on a real device: IllegalStateException
+            // "can't get VLCObject instance" from getTime() on an
+            // already-released player. Not recoverable mid-loop; just stop
+            // polling instead of crashing the app.
+            val positionMs = runCatching { currentPlayer.positionMs }.getOrNull()
+            if (positionMs == null) break
+            uiPositionMs = positionMs
+            uiIsPlaying = runCatching { currentPlayer.isPlaying }.getOrElse { false }
             delay(POSITION_POLL_MS)
+        }
+    }
+
+    // Solo playback (and a Watch Together session demoted to solo, see
+    // WtEvent.HostLost below) never persisted progress at all before this -
+    // Home's "Continue Watching" always came up empty. Separate, much
+    // slower loop than the position-poll above - no need to hit the DB
+    // every 500ms.
+    LaunchedEffect(currentPlayer) {
+        while (true) {
+            delay(PROGRESS_SAVE_MS)
+            val durationMs = runCatching { currentPlayer.durationMs }.getOrNull() ?: break
+            val positionMs = runCatching { currentPlayer.positionMs }.getOrNull() ?: break
+            if (durationMs > 0) onProgress(positionMs, durationMs)
+        }
+    }
+
+    var eventText by remember { mutableStateOf<String?>(null) }
+    if (currentSession != null) {
+        LaunchedEffect(currentSession) {
+            currentSession.events.collect { event ->
+                eventText = when (event) {
+                    is WatchTogetherSession.WtEvent.ParticipantJoined -> "${event.participant.displayName} joined"
+                    is WatchTogetherSession.WtEvent.ParticipantLeft -> "A participant left"
+                    is WatchTogetherSession.WtEvent.Error -> event.reason
+                    WatchTogetherSession.WtEvent.Ended -> {
+                        onBack()
+                        null
+                    }
+                    WatchTogetherSession.WtEvent.Joined -> null
+                    WatchTogetherSession.WtEvent.HostLost -> {
+                        // Demote to a local solo player instead of dying
+                        // outright - the guest's own copy of the file is
+                        // unaffected by the host disappearing, only the
+                        // sync is gone. Dropping `session` to null makes
+                        // every control below fall back to `currentPlayer`
+                        // directly (same branches already used for plain
+                        // solo playback), and removing it from the manager
+                        // clears it from the Listing/foreground-service pool.
+                        com.mofy.app.watchtogether.WatchTogetherSessionManager.remove(currentSession.roomKey)
+                        session = null
+                        "Host ended the session - continuing solo"
+                    }
+                }
+            }
+        }
+        LaunchedEffect(eventText) {
+            if (eventText != null) {
+                delay(EVENT_TOAST_MS)
+                eventText = null
+            }
         }
     }
 
@@ -193,17 +286,85 @@ fun SoloPlayerScreen(
                 },
         )
 
-        Box(
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .padding(contentPadding)
-                .padding(16.dp)
-                .size(36.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(Color.Black.copy(alpha = 0.5f))
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
+                .padding(16.dp),
         ) {
-            Icon(AppIcons.ArrowBack, contentDescription = "Back", tint = Color.White)
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(AppIcons.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+            if (eventText != null) {
+                Box(modifier = Modifier.width(12.dp))
+                Text(
+                    eventText.orEmpty(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    modifier = Modifier
+                        .clip(MaterialTheme.shapes.small)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
+        }
+
+        // An attached external subtitle slave becomes available in the
+        // track list but libVLC does NOT auto-select it as active - without
+        // this, a single linked subtitle (no second one, so the picker
+        // below never even shows) would silently never render.
+        val tracks = currentPlayer.subtitleTracks()
+        val realTracks = tracks.filter { it.first != -1 }
+        LaunchedEffect(realTracks) {
+            if (currentSubtitleTrack == null && realTracks.isNotEmpty()) {
+                val firstId = realTracks.first().first
+                currentPlayer.setSubtitleTrack(firstId)
+                currentSubtitleTrack = firstId
+            }
+        }
+
+        // Subtitle track picker - top-right, shown whenever libVLC reports
+        // any track at all (its own "Disable" entry plus any real ones).
+        if (tracks.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(contentPadding)
+                    .padding(16.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable { subtitleMenuOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("CC", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                }
+                DropdownMenu(
+                    expanded = subtitleMenuOpen,
+                    onDismissRequest = { subtitleMenuOpen = false },
+                ) {
+                    tracks.forEach { (id, name) ->
+                        DropdownMenuItem(
+                            text = { Text(name) },
+                            onClick = {
+                                currentPlayer.setSubtitleTrack(id.takeIf { it != -1 })
+                                currentSubtitleTrack = id.takeIf { it != -1 }
+                                subtitleMenuOpen = false
+                            },
+                        )
+                    }
+                }
+            }
         }
 
         // Center controls - single play/pause button with rewind/forward
@@ -215,7 +376,10 @@ fun SoloPlayerScreen(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clickable { currentPlayer.seekTo((uiPositionMs - SEEK_NUDGE_MS).coerceAtLeast(0L)) },
+                    .clickable {
+                        val target = (uiPositionMs - SEEK_NUDGE_MS).coerceAtLeast(0L)
+                        if (currentSession != null) currentSession.localSeek(target) else currentPlayer.seekTo(target)
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(AppIcons.Replay10, contentDescription = "Back 10 seconds", tint = Color.White.copy(alpha = 0.85f))
@@ -226,7 +390,14 @@ fun SoloPlayerScreen(
                     .size(72.dp)
                     .clip(MaterialTheme.shapes.extraLarge)
                     .background(Color.Black.copy(alpha = 0.45f))
-                    .clickable { if (uiIsPlaying) currentPlayer.pause() else currentPlayer.play() },
+                    .clickable {
+                        when {
+                            currentSession != null && uiIsPlaying -> currentSession.localPause()
+                            currentSession != null -> currentSession.localPlay()
+                            uiIsPlaying -> currentPlayer.pause()
+                            else -> currentPlayer.play()
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -240,10 +411,81 @@ fun SoloPlayerScreen(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clickable { currentPlayer.seekTo(uiPositionMs + SEEK_NUDGE_MS) },
+                    .clickable {
+                        val target = uiPositionMs + SEEK_NUDGE_MS
+                        if (currentSession != null) currentSession.localSeek(target) else currentPlayer.seekTo(target)
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(AppIcons.Forward10, contentDescription = "Forward 10 seconds", tint = Color.White.copy(alpha = 0.85f))
+            }
+        }
+
+        // Watch Together only: people icon with a live participant-count
+        // badge, bottom-right. Replaces the old always-visible "Watching
+        // with Priya +1" pill - presence is now a tap-to-check detail, and
+        // join/leave/pause/etc. surface as the transient toast up top
+        // instead of a persistent label.
+        if (currentSession != null) {
+            val state by currentSession.state.collectAsState()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(contentPadding)
+                    .padding(end = 16.dp, bottom = 88.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable { peopleMenuOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(AppIcons.People, contentDescription = "Watching together", tint = Color.White)
+                    if (state.participants.size > 1) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 6.dp, y = (-6).dp)
+                                .size(16.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "${state.participants.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                }
+                DropdownMenu(
+                    expanded = peopleMenuOpen,
+                    onDismissRequest = { peopleMenuOpen = false },
+                ) {
+                    if (onInvite != null) {
+                        DropdownMenuItem(
+                            text = { Text("Invite") },
+                            onClick = {
+                                peopleMenuOpen = false
+                                onInvite()
+                            },
+                        )
+                    }
+                    state.participants.forEach { participant ->
+                        DropdownMenuItem(
+                            text = {
+                                ParticipantRow(
+                                    participant = participant,
+                                    isLocal = participant.id == state.localParticipantId,
+                                )
+                            },
+                            onClick = {},
+                        )
+                    }
+                }
             }
         }
 
@@ -262,7 +504,9 @@ fun SoloPlayerScreen(
                 SeekTrack(
                     fraction = (uiPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f),
                     onFractionChange = { fraction -> uiPositionMs = (fraction * durationMs).toLong() },
-                    onFractionChangeFinished = { currentPlayer.seekTo(uiPositionMs) },
+                    onFractionChangeFinished = {
+                        if (currentSession != null) currentSession.localSeek(uiPositionMs) else currentPlayer.seekTo(uiPositionMs)
+                    },
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                 )
                 Text(formatMs(durationMs), style = MaterialTheme.typography.labelSmall, color = Color.White)

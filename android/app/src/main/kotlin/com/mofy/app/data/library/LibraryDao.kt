@@ -50,6 +50,25 @@ interface LibraryDao {
     @Query("SELECT * FROM library_items ORDER BY addedAtEpochMillis DESC")
     fun observeAll(): Flow<List<LibraryItem>>
 
+    /** Home's "Continue Watching" - items with real progress that aren't essentially finished (>=95%). */
+    @Query(
+        """
+        SELECT * FROM library_items
+        WHERE lastPositionMs > 0
+          AND lastDurationMs > 0
+          AND CAST(lastPositionMs AS REAL) / lastDurationMs < 0.95
+        ORDER BY lastWatchedAtEpochMillis DESC
+        LIMIT 20
+        """,
+    )
+    fun observeContinueWatching(): Flow<List<LibraryItem>>
+
+    @Query(
+        "UPDATE library_items SET lastPositionMs = :positionMs, lastDurationMs = :durationMs, " +
+            "lastWatchedAtEpochMillis = :watchedAt WHERE id = :id",
+    )
+    suspend fun updateProgress(id: String, positionMs: Long, durationMs: Long, watchedAt: Long = System.currentTimeMillis())
+
     /** One-shot fetch (not a Flow) - used to backfill the search index for items saved before it existed. */
     @Query("SELECT * FROM library_items")
     suspend fun getAllOnce(): List<LibraryItem>

@@ -71,14 +71,16 @@ import com.mofy.app.playback.FakePlayerController
 import com.mofy.app.ui.watchtogether.CreateRoomScreen
 import com.mofy.app.ui.watchtogether.GuestLobbyScreen
 import com.mofy.app.ui.watchtogether.JoinSessionSheet
+import com.mofy.app.ui.watchtogether.ListingRow
 import com.mofy.app.ui.watchtogether.LiveSessionBar
 import com.mofy.app.ui.watchtogether.PlayerScreen
 import com.mofy.app.ui.watchtogether.QrScanScreen
-import com.mofy.app.ui.watchtogether.WatchTogetherSessionViewModel
+import com.mofy.app.ui.watchtogether.WatchTogetherListingScreen
 import com.mofy.app.ui.watchtogether.shareWatchTogetherInvite
 import com.mofy.app.watchtogether.ItemHash
 import com.mofy.app.watchtogether.Role
 import com.mofy.app.watchtogether.WatchTogetherSession
+import com.mofy.app.watchtogether.WatchTogetherSessionManager
 import com.mofy.app.watchtogether.signaling.SignalingSettings
 
 class MainActivity : ComponentActivity() {
@@ -154,7 +156,6 @@ private fun MofyApp(
     // (currentRoute changes), and without it this would silently reset the
     // selected category/extracted title on every screen transition.
     val browseSessionViewModel = remember { BrowseSessionViewModel() }
-    val watchTogetherViewModel = remember { WatchTogetherSessionViewModel() }
     var deepLinkedRoomKey by remember { mutableStateOf<String?>(null) }
     var deepLinkedSignalingUrl by remember { mutableStateOf<String?>(null) }
     var showJoinSheet by remember { mutableStateOf(false) }
@@ -220,6 +221,7 @@ private fun MofyApp(
         }
     }
 
+    val watchTogetherSessions by WatchTogetherSessionManager.sessions.collectAsState()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val isTopLevel = TopLevelDestination.entries.any { it.route == currentRoute }
@@ -234,8 +236,8 @@ private fun MofyApp(
                 TopLevelDestination.HOME.route -> TopAppBar(
                     title = { Text("Mofy") },
                     actions = {
-                        IconButton(onClick = { showJoinSheet = true }) {
-                            Icon(AppIcons.Groups, contentDescription = "Join a Watch Together session")
+                        IconButton(onClick = { navController.navigate(PushedRoute.WT_LISTING) }) {
+                            Icon(AppIcons.Groups, contentDescription = "Watch Together")
                         }
                         IconButton(onClick = { navController.navigate(PushedRoute.SEARCH) }) {
                             Icon(AppIcons.Search, contentDescription = "Search")
@@ -307,6 +309,52 @@ private fun MofyApp(
                         }
                     },
                 )
+                PushedRoute.WT_LISTING -> TopAppBar(
+                    title = { Text("Watch Together") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
+                        }
+                    },
+                )
+                PushedRoute.WT_CREATE -> TopAppBar(
+                    title = {
+                        Column {
+                            Text("Watch Together")
+                            watchTogetherSessions.lastOrNull()?.item?.title?.let { title ->
+                                Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            WatchTogetherSessionManager.removeLast()
+                            navController.popBackStack()
+                        }) {
+                            Icon(AppIcons.Close, contentDescription = "Cancel")
+                        }
+                    },
+                )
+                PushedRoute.WT_ROOM -> TopAppBar(
+                    title = {
+                        Column {
+                            Text("Watch Together")
+                            val roomKey = backStackEntry?.arguments?.getString("roomKey")
+                            watchTogetherSessions.firstOrNull { it.session.roomKey == roomKey }?.item?.title?.let { title ->
+                                Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            val roomKey = backStackEntry?.arguments?.getString("roomKey")
+                            if (roomKey != null) WatchTogetherSessionManager.remove(roomKey)
+                            navController.popBackStack()
+                        }) {
+                            Icon(AppIcons.Close, contentDescription = "Cancel")
+                        }
+                    },
+                )
                 TopLevelDestination.LIBRARY.route -> TopAppBar(title = { Text("Library") })
                 TopLevelDestination.SETTINGS.route -> TopAppBar(title = { Text("Settings") })
                 ROUTE_DETAIL -> TopAppBar(
@@ -365,7 +413,6 @@ private fun MofyApp(
             }
         },
     ) { contentPadding ->
-        val watchTogetherSession by watchTogetherViewModel.session.collectAsState()
         Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -375,13 +422,12 @@ private fun MofyApp(
                 HomeScreen(
                     contentPadding = contentPadding,
                     libraryDao = database.libraryDao(),
-                    watchProgressDao = database.watchProgressDao(),
                     catalogRepository = catalogRepository,
                     syncedCatalogDao = database.syncedCatalogDao(),
                     onItemClick = { item -> navController.navigate("detail/${item.id}") },
                     onCatalogItemClick = { item -> openCatalogItemDetail(item) },
-                    onContinueWatching = { wp ->
-                        navController.navigate("detail/${wp.libraryItemId}")
+                    onContinueWatching = { item ->
+                        navController.navigate("detail/${item.id}")
                     },
                     onMoreClick = { section ->
                         val route = when (section) {
@@ -753,10 +799,10 @@ private fun MofyApp(
             composable(ROUTE_DETAIL) { backStack ->
                 val id = backStack.arguments?.getString("id") ?: ""
                 val detailItem by database.libraryDao().observeById(id).collectAsState(initial = null)
-                val liveSessionForDetail by watchTogetherViewModel.sessionState.collectAsState()
-                val sessionMatchesDetail = detailItem != null &&
-                    liveSessionForDetail != null &&
-                    liveSessionForDetail?.itemHash == ItemHash.of(detailItem!!)
+                val allSessionStates by WatchTogetherSessionManager.sessionStates.collectAsState()
+                val liveSessionForDetail = detailItem?.let { item ->
+                    allSessionStates.firstOrNull { it.itemHash == ItemHash.of(item) }
+                }
                 DetailScreen(
                     contentPadding = contentPadding,
                     itemId = id,
@@ -782,18 +828,35 @@ private fun MofyApp(
                     onWatchTogether = { item ->
                         navController.navigate(PushedRoute.watchTogetherCreate(item.id))
                     },
-                    activeWatchTogetherSession = if (sessionMatchesDetail) liveSessionForDetail else null,
-                    onReturnToWatchTogetherSession = { navController.navigate(PushedRoute.WT_SESSION) },
-                    onPlay = { movieUri -> navController.navigate(PushedRoute.soloPlay(movieUri)) },
+                    activeWatchTogetherSession = liveSessionForDetail,
+                    onReturnToWatchTogetherSession = {
+                        liveSessionForDetail?.let { navController.navigate(PushedRoute.wtSession(it.roomKey)) }
+                    },
+                    onPlay = { libraryItemId, movieUri, subtitleUri, subtitle2Uri ->
+                        navController.navigate(PushedRoute.soloPlay(libraryItemId, movieUri, subtitleUri, subtitle2Uri))
+                    },
                 )
             }
             composable(PushedRoute.SOLO_PLAY) { backStack ->
-                val encodedUri = backStack.arguments?.getString("uri") ?: ""
-                val movieUri = java.net.URLDecoder.decode(encodedUri, "UTF-8")
+                fun decode(key: String): String? {
+                    val raw = backStack.arguments?.getString(key) ?: return null
+                    return java.net.URLDecoder.decode(raw, "UTF-8").takeUnless { it == "none" }
+                }
+                val movieUri = decode("uri") ?: ""
+                val soloLibraryItemId = decode("libraryItemId")
                 com.mofy.app.ui.watchtogether.SoloPlayerScreen(
                     contentPadding = contentPadding,
                     mediaUri = movieUri,
+                    subtitleUri = decode("subtitleUri"),
+                    subtitle2Uri = decode("subtitle2Uri"),
                     onBack = { navController.popBackStack() },
+                    onProgress = { positionMs, durationMs ->
+                        if (soloLibraryItemId != null) {
+                            coroutineScope.launch {
+                                database.libraryDao().updateProgress(soloLibraryItemId, positionMs, durationMs)
+                            }
+                        }
+                    },
                 )
             }
             composable(PushedRoute.LINK) { backStack ->
@@ -873,6 +936,47 @@ private fun MofyApp(
                     },
                 )
             }
+            composable(PushedRoute.WT_LISTING) {
+                val allStates by WatchTogetherSessionManager.sessionStates.collectAsState()
+                val rows = watchTogetherSessions.map { entry ->
+                    val liveState = allStates.firstOrNull { it.roomKey == entry.session.roomKey }
+                    ListingRow(
+                        roomKey = entry.session.roomKey,
+                        title = entry.item?.title ?: "Untitled",
+                        role = entry.session.role,
+                        participantCount = liveState?.participants?.size ?: 1,
+                        isPlaying = liveState?.isPlaying ?: false,
+                    )
+                }
+                WatchTogetherListingScreen(
+                    contentPadding = contentPadding,
+                    rows = rows,
+                    canJoinMore = WatchTogetherSessionManager.canAddMore,
+                    onOpenRow = { roomKey ->
+                        val row = rows.firstOrNull { it.roomKey == roomKey }
+                        if (row != null && row.role == Role.HOST && !row.isPlaying) {
+                            navController.navigate(PushedRoute.wtRoom(roomKey))
+                        } else {
+                            navController.navigate(PushedRoute.wtSession(roomKey))
+                        }
+                    },
+                    onLeave = { roomKey -> WatchTogetherSessionManager.remove(roomKey) },
+                    onJoinRoom = { showJoinSheet = true },
+                )
+            }
+            composable(PushedRoute.WT_ROOM) { backStack ->
+                val roomKey = backStack.arguments?.getString("roomKey") ?: ""
+                val hostSession = watchTogetherSessions.firstOrNull { it.session.roomKey == roomKey }?.session
+                if (hostSession == null) {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "Session no longer active")
+                } else {
+                    CreateRoomScreen(
+                        contentPadding = contentPadding,
+                        session = hostSession,
+                        onStartWatching = { navController.navigate(PushedRoute.wtSession(roomKey)) },
+                    )
+                }
+            }
             composable(PushedRoute.WT_CREATE) { backStack ->
                 val libraryItemId = backStack.arguments?.getString("libraryItemId") ?: ""
                 val createItem by database.libraryDao().observeById(libraryItemId).collectAsState(initial = null)
@@ -902,19 +1006,21 @@ private fun MofyApp(
                         )
                     } else {
                         androidx.compose.runtime.LaunchedEffect(hostSession) {
-                            watchTogetherViewModel.setActive(hostSession, resolvedItem)
+                            WatchTogetherSessionManager.add(hostSession, resolvedItem)
                         }
                         CreateRoomScreen(
                             contentPadding = contentPadding,
                             session = hostSession,
-                            onStartWatching = { navController.navigate(PushedRoute.WT_SESSION) },
+                            onStartWatching = { navController.navigate(PushedRoute.wtSession(hostSession.roomKey)) },
                         )
                     }
                 }
             }
-            composable(PushedRoute.WT_SESSION) {
-                val activeSession = watchTogetherSession
-                val activeItem by watchTogetherViewModel.activeItem.collectAsState()
+            composable(PushedRoute.WT_SESSION) { backStack ->
+                val roomKey = backStack.arguments?.getString("roomKey") ?: ""
+                val activeEntry = watchTogetherSessions.firstOrNull { it.session.roomKey == roomKey }
+                val activeSession = activeEntry?.session
+                val activeItem = activeEntry?.item
                 if (activeSession == null) {
                     PlaceholderScreen(contentPadding = contentPadding, note = "No active Watch Together session")
                 } else {
@@ -925,7 +1031,7 @@ private fun MofyApp(
                             session = activeSession,
                             onSessionStarted = { /* handled by the isPlaying check above on recomposition */ },
                             onLeave = {
-                                watchTogetherViewModel.clear()
+                                WatchTogetherSessionManager.remove(activeSession.roomKey)
                                 navController.popBackStack(TopLevelDestination.HOME.route, inclusive = false)
                             },
                         )
@@ -938,37 +1044,42 @@ private fun MofyApp(
                             itemTitle = activeItem?.title ?: "",
                             createSession = { realPlayer ->
                                 // Lobby sessions are created with a headless FakePlayerController
-                                // (no media chosen yet); starting playback re-creates the session
-                                // bound to the real VlcPlayerController, reusing the same roomKey.
-                                // This is a known v1 gap: any guest connected during the lobby
-                                // phase must reconnect, since a new signaling/transport is
-                                // stood up under the hood - see docs/tasks/13-watch-together.md C1.
-                                activeSession.end()
-                                val fresh = if (activeSession.role == Role.HOST) {
-                                    WatchTogetherSession.host(
-                                        itemHash = activeSession.itemHash,
-                                        displayName = "You",
-                                        player = realPlayer,
-                                        appContext = context,
-                                        roomKey = activeSession.roomKey,
-                                    )
-                                } else {
-                                    WatchTogetherSession.guest(
-                                        roomKey = activeSession.roomKey,
-                                        signalingUrl = activeSession.signalingUrl
-                                            ?: SignalingSettings.urlForRoom(activeSession.roomKey)
-                                            ?: error("no signaling url"),
-                                        itemHash = activeSession.itemHash,
-                                        displayName = "You",
-                                        player = realPlayer,
-                                        appContext = context,
-                                    )
-                                }
-                                watchTogetherViewModel.setActive(fresh, activeItem)
-                                fresh
+                                // (no media chosen yet). Used to end the session and create a
+                                // fresh one bound to the real player - that tore down the
+                                // signaling server (new random port) and dropped any guest
+                                // already connected during the lobby phase, confirmed on a real
+                                // device (guest's WS closed with code 1001 the instant playback
+                                // started, invite link/QR then pointed at a dead port).
+                                // rebindPlayer swaps the player in place instead, keeping the
+                                // same signaling server/roomKey/connections alive.
+                                activeSession.rebindPlayer(realPlayer)
+                                activeSession
                             },
-                            onBack = { navController.popBackStack() },
-                            onInvite = { watchTogetherViewModel.session.value?.let { shareWatchTogetherInvite(context, it) } },
+                            // Session stays alive - back is "minimize", not
+                            // "end" (the floating "return to session" pill
+                            // elsewhere is what you come back through). Bare
+                            // popBackStack() silently no-ops when this
+                            // screen was reached via that pill (nothing
+                            // below it on the stack to pop to) - fixed by
+                            // always falling back to a real target instead
+                            // of relying on ambient back-stack state.
+                            onBack = {
+                                if (!navController.popBackStack()) {
+                                    navController.navigate(TopLevelDestination.HOME.route) {
+                                        popUpTo(TopLevelDestination.HOME.route) { inclusive = true }
+                                    }
+                                }
+                            },
+                            onInvite = {
+                                WatchTogetherSessionManager.sessionFor(roomKey)?.let { shareWatchTogetherInvite(context, it) }
+                            },
+                            onProgress = { positionMs, durationMs ->
+                                activeItem?.let { item ->
+                                    coroutineScope.launch {
+                                        database.libraryDao().updateProgress(item.id, positionMs, durationMs)
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -988,10 +1099,10 @@ private fun MofyApp(
                                     player = FakePlayerController(),
                                     appContext = context,
                                 )
-                                watchTogetherViewModel.setActive(guestSession, pickedItem)
+                                WatchTogetherSessionManager.add(guestSession, pickedItem)
                                 joinPickedItem = null
                                 navController.popBackStack(TopLevelDestination.HOME.route, inclusive = false)
-                                navController.navigate(PushedRoute.WT_SESSION)
+                                navController.navigate(PushedRoute.wtSession(guestSession.roomKey))
                             }
                         } else {
                             showJoinSheet = true
@@ -1002,11 +1113,18 @@ private fun MofyApp(
                 )
             }
         }
-        if (watchTogetherSession != null && currentRoute != ROUTE_DETAIL && currentRoute != PushedRoute.WT_SESSION) {
-            val liveState by watchTogetherViewModel.sessionState.collectAsState()
+        // Shows only the most-recently-active session - a real multi-session
+        // hub (Watch Together Listing, docs/tasks/watch-together-redesign.md)
+        // replaces this once built; until then this is the one surface for
+        // "return to a backgrounded session" when more than one is live.
+        val mostRecentSession = watchTogetherSessions.lastOrNull()
+        if (mostRecentSession != null && currentRoute != ROUTE_DETAIL && currentRoute != PushedRoute.WT_SESSION) {
+            val allStates by WatchTogetherSessionManager.sessionStates.collectAsState()
+            val liveState = allStates.firstOrNull { it.roomKey == mostRecentSession.session.roomKey }
             LiveSessionBar(
                 session = liveState,
-                onReturnToSession = { navController.navigate(PushedRoute.WT_SESSION) },
+                onReturnToSession = { navController.navigate(PushedRoute.wtSession(mostRecentSession.session.roomKey)) },
+                onStop = { WatchTogetherSessionManager.remove(mostRecentSession.session.roomKey) },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(contentPadding)
@@ -1034,12 +1152,12 @@ private fun MofyApp(
                     navController.navigate(PushedRoute.WT_SCAN)
                 },
                 onJoined = { session ->
-                    watchTogetherViewModel.setActive(session, joinPickedItem)
+                    WatchTogetherSessionManager.add(session, joinPickedItem)
                     joinPickedItem = null
                     showJoinSheet = false
                     deepLinkedRoomKey = null
                     deepLinkedSignalingUrl = null
-                    navController.navigate(PushedRoute.WT_SESSION)
+                    navController.navigate(PushedRoute.wtSession(session.roomKey))
                 },
             )
         }

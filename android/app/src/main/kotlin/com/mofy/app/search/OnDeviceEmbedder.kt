@@ -103,7 +103,7 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
             // Inspect output tensor shape to allocate correctly
             val outTensor = interp.getOutputTensor(0)
             val outShape = outTensor.shape()
-            Log.d(TAG, "output tensor shape: ${outShape.toList()}")
+            Log.e(TAG, "output tensor shape: ${outShape.toList()}")
 
             val raw: FloatArray = when {
                 outShape.size == 3 -> {

@@ -42,6 +42,9 @@ class WatchTogetherSession private constructor(
         data class Error(val reason: String) : WtEvent
         data object Joined : WtEvent
         data object Ended : WtEvent
+
+        /** Guest-only: host disappeared without a clean end - see SyncEngine.SyncEvent.HostLost. */
+        data object HostLost : WtEvent
     }
 
     private val _state = MutableStateFlow(snapshot())
@@ -63,6 +66,9 @@ class WatchTogetherSession private constructor(
     fun localSetAudio(index: Int?) = engine.localSetAudio(index)
     fun heartbeatTick() = engine.heartbeatTick()
 
+    /** Swaps in a real player without ending the session - see SyncEngine.rebindPlayer. */
+    fun rebindPlayer(newPlayer: PlayerController) = engine.rebindPlayer(newPlayer).also { refreshState() }
+
     fun end() {
         engine.close()
         transport.close()
@@ -75,6 +81,7 @@ class WatchTogetherSession private constructor(
         when (event) {
             is SyncEngine.SyncEvent.Error -> _events.tryEmit(WtEvent.Error(event.reason))
             is SyncEngine.SyncEvent.Joined -> _events.tryEmit(WtEvent.Joined)
+            is SyncEngine.SyncEvent.HostLost -> _events.tryEmit(WtEvent.HostLost)
             is SyncEngine.SyncEvent.ParticipantsChanged -> {
                 val previous = _state.value.participants.map { it.id }.toSet()
                 event.participants.forEach { p ->
@@ -130,8 +137,24 @@ class WatchTogetherSession private constructor(
                     ?: error("bad relay base")
             } else {
                 embedded = EmbeddedSignalingServer().also { it.start() }
-                signalingUrl = embedded.localUrl(roomKey)
+                // signalingUrl also becomes the guest-facing invite (see
+                // deepLink below) - localUrl()'s 127.0.0.1 only resolves to
+                // this device, so a guest's own phone would connect to
+                // itself and never reach the host. findLanAddress() falls
+                // back to localUrl() only if no usable network address was
+                // found at all (offline), in which case the invite link
+                // genuinely can't work regardless.
+                val lanAddress = EmbeddedSignalingServer.findLanAddress()
+                signalingUrl = if (lanAddress != null) embedded.urlFor(roomKey, lanAddress) else embedded.localUrl(roomKey)
             }
+            // findLanAddress() prefers wlan* and isn't ZeroTier/VPN-aware -
+            // when the guest is reachable only over such a tunnel, this
+            // logged URL will be wrong; substitute the correct host IP
+            // manually (grep logcat for "WT_HOST" to find these values).
+            android.util.Log.e(
+                "WT_HOST",
+                "room created roomKey=$roomKey itemHash=$itemHash signalingUrl=$signalingUrl",
+            )
 
             // Signaling peer id must be "host" so guests can address JoinRtc/ICE.
             val signaling = OkHttpSignalingChannel(

@@ -28,7 +28,6 @@ import kotlinx.coroutines.Dispatchers
         LibrarySearchEntity::class,
         GenreEntity::class,
         TorrentSiteEntity::class,
-        WatchProgress::class,
         CatalogPosterCache::class,
         SyncedCatalogItem::class,
         SyncedCatalogSearchEntity::class,
@@ -37,14 +36,19 @@ import kotlinx.coroutines.Dispatchers
     // 15: imdbId index on library_items (schema hash fix).
     // 16: synced_catalog_items, synced_catalog_search (FTS4), synced_catalog_vec (vec0) for TMDB new-releases sync (ADR 0009).
     // 17: model_download_state for foreground-service model downloads (ADR 0010 task 1).
-    version = 17,
+    // 18: dropped watch_progress (its libraryItemId column was Long while
+    //     library_items.id is a String UUID - the join could never match,
+    //     so nothing ever actually populated "Continue Watching"). Replaced
+    //     with lastPositionMs/lastDurationMs/lastWatchedAtEpochMillis
+    //     columns directly on library_items - denormalized over a join,
+    //     matching this project's SQL convention.
+    version = 18,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun libraryDao(): LibraryDao
     abstract fun genreDao(): GenreDao
     abstract fun siteDao(): SiteDao
-    abstract fun watchProgressDao(): WatchProgressDao
     abstract fun catalogPosterCacheDao(): CatalogPosterCacheDao
     abstract fun syncedCatalogDao(): com.mofy.app.data.catalog.SyncedCatalogDao
     abstract fun syncedCatalogSearchDao(): com.mofy.app.data.catalog.SyncedCatalogSearchDao
@@ -59,9 +63,16 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "mofy.db",
             )
-                // Pre-release dev app, no real user data to preserve yet -
-                // simplest path across schema changes.
-                .fallbackToDestructiveMigration(true)
+                // NO fallbackToDestructiveMigration - a missing migration path
+                // must throw (Room's real, loud "Migration didn't properly
+                // handle..." / "no migrations found" exception), the same way
+                // Rails/go-migrate refuse to silently reset a schema they
+                // don't have a defined path for. The alternative silently
+                // dropped and recreated every table in this database on a
+                // real device the first time a version bump shipped with no
+                // matching migration - a real user's whole library gone, not
+                // a hypothetical. Every version bump from here on requires an
+                // actual Migration added to addMigrations() below.
                 // Custom driver (not the default framework one) is required to
                 // load native extensions - see
                 // docs/research/native-sqlite-extensions-android.md. sqlite-vec's
@@ -79,7 +90,7 @@ abstract class AppDatabase : RoomDatabase() {
                         addExtension("$nativeLibraryDir/libspellfix", "sqlite3_spellfix_init")
                     },
                 )
-                .addMigrations(Migrations.MIGRATION_15_16, Migrations.MIGRATION_16_17)
+                .addMigrations(Migrations.MIGRATION_15_16, Migrations.MIGRATION_16_17, Migrations.MIGRATION_17_18)
                 // synced_catalog_vec isn't a Room @Entity (vec0's float[768]
                 // column syntax has no Room-representable form), so it only
                 // ever gets created by MIGRATION_15_16's execSQL - but a

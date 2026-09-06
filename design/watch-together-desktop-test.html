@@ -1,0 +1,314 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mofy Watch Together — Desktop Test Client</title>
+<style>
+  body { background:#0e0e10; color:#f2f2f2; font-family: -apple-system, sans-serif; margin:0; padding:16px; }
+  h1 { font-size:16px; margin:0 0 12px; }
+  .row { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+  input { background:#1a1a1d; border:1px solid #2e2e33; color:#f2f2f2; padding:8px; border-radius:8px; flex:1; min-width:160px; font-family:monospace; }
+  button { background:#2b2b30; border:1px solid #2e2e33; color:#f2f2f2; padding:8px 14px; border-radius:8px; cursor:pointer; }
+  button:hover { background:#3a3a40; }
+  button:disabled { opacity:0.4; cursor:default; }
+  .state { display:flex; gap:12px; margin:10px 0; }
+  .badge { padding:4px 10px; border-radius:6px; font-size:12px; background:#232327; border:1px solid #2e2e33; }
+  .badge.ok { background:#123a2a; border-color:#3ecf8e; color:#3ecf8e; }
+  .badge.bad { background:#3a1212; border-color:#e94560; color:#e94560; }
+  video { width:100%; max-height:40vh; background:#000; border-radius:8px; margin:10px 0; }
+  #log { background:#1a1a1d; border:1px solid #2e2e33; border-radius:8px; padding:10px; height:260px; overflow-y:auto; font-family:monospace; font-size:11px; white-space:pre-wrap; }
+  .controls { display:flex; gap:8px; margin:8px 0; align-items:center; }
+  label { font-size:12px; color:#9a9aa2; display:block; margin-bottom:2px; }
+  .field { flex:1; min-width:160px; }
+</style>
+</head>
+<body>
+<h1>Mofy Watch Together — Desktop Test Client (Guest)</h1>
+
+<div class="row">
+  <div class="field">
+    <label>Signaling WS URL (phone's embedded server)</label>
+    <input id="wsUrl" value="ws://192.168.192.131:PORT/wt/">
+  </div>
+  <div class="field" style="max-width:120px">
+    <label>Room key</label>
+    <input id="roomKey" maxlength="6" placeholder="ABC234">
+  </div>
+</div>
+<div class="row">
+  <div class="field">
+    <label>Item hash (must match host's — see note below)</label>
+    <input id="itemHash" placeholder="paste the same hash the phone is using">
+  </div>
+  <div class="field" style="max-width:160px">
+    <label>Display name</label>
+    <input id="displayName" value="Desktop">
+  </div>
+</div>
+<div class="row">
+  <button id="joinBtn">Join as guest</button>
+  <button id="leaveBtn" disabled>Leave</button>
+</div>
+
+<div class="state">
+  <span id="wsState" class="badge">WS: idle</span>
+  <span id="iceState" class="badge">ICE: idle</span>
+  <span id="dcState" class="badge">Data channel: idle</span>
+</div>
+
+<div class="controls">
+  <label style="margin:0">Local video (pick the SAME file as the phone's O.C.D. short film):</label>
+  <input type="file" id="videoFile" accept="video/*">
+</div>
+<video id="video" controls muted></video>
+<div class="controls">
+  <button id="playBtn" disabled>Send Play</button>
+  <button id="pauseBtn" disabled>Send Pause</button>
+  <span style="font-size:12px;color:#9a9aa2">(local video also drives these automatically on play/pause/seek)</span>
+</div>
+
+<div id="log"></div>
+
+<script>
+// Protocol reference (from real source, not guessed):
+//   android/app/src/main/kotlin/com/mofy/app/watchtogether/signaling/SignalingMessages.kt
+//     Outer envelope, classDiscriminator "type":
+//       {"type":"hello-sig","roomKey":"...","peerId":"..."}
+//       {"type":"signal","from":"...","to":"...","payload":"<json string>"}
+//       {"type":"error","reason":"..."}
+//   android/app/src/main/kotlin/com/mofy/app/watchtogether/webrtc/RtcSignal.kt
+//     Inner payload (goes inside Signal.payload as a JSON string), classDiscriminator "kind":
+//       {"kind":"join-rtc"}
+//       {"kind":"offer","sdp":"..."}
+//       {"kind":"answer","sdp":"..."}
+//       {"kind":"ice","candidate":"...","sdpMid":"...","sdpMLineIndex":0}
+//   android/app/src/main/kotlin/com/mofy/app/watchtogether/webrtc/WtWebRtcConfig.kt
+//     STUN: stun:stun.l.google.com:19302, stun:stun1.l.google.com:19302
+//   android/app/src/main/kotlin/com/mofy/app/watchtogether/sync/SyncEngineConfig.kt
+//     HOST_PEER_ID = "host"
+//   android/app/src/main/kotlin/com/mofy/app/watchtogether/protocol/WtMessage.kt
+//     Data-channel messages (over the "wt-control" DataChannel), classDiscriminator "type":
+//       {"type":"join","roomKey":"...","displayName":"...","itemHash":"..."}
+//       {"type":"join-ack","participantId":"...","participants":[...],"positionMs":0,"isPlaying":false}
+//       {"type":"play","positionMs":0,"by":"..."}  {"type":"pause",...}  {"type":"seek",...}
+//       {"type":"position","positionMs":0,"isPlaying":false,"ts":0}
+//
+// Architecture note: this is SYNC-ONLY. No media is sent over WebRTC — each
+// peer plays its OWN local copy of the same file and only play/pause/seek/
+// position messages cross the data channel (see SyncEngine.kt). The phone
+// is always host here since it's the one running EmbeddedSignalingServer.
+
+const HOST_PEER_ID = "host";
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+function log(dir, obj) {
+  const line = `[${new Date().toLocaleTimeString()}] ${dir} ${JSON.stringify(obj)}`;
+  logEl.textContent += line + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setBadge(el, text, cls) {
+  el.textContent = text;
+  el.className = "badge" + (cls ? " " + cls : "");
+}
+
+let ws = null;
+let pc = null;
+let dc = null;
+let myPeerId = null;
+
+function guestPeerId() {
+  return "guest-" + Math.random().toString(36).slice(2, 10);
+}
+
+function sendSignal(to, payload) {
+  const frame = { type: "signal", from: myPeerId, to, payload: JSON.stringify(payload) };
+  ws.send(JSON.stringify(frame));
+  log("→ WS", frame);
+}
+
+function sendControl(msg) {
+  if (dc && dc.readyState === "open") {
+    dc.send(JSON.stringify(msg));
+    log("→ DC", msg);
+  }
+}
+
+async function join() {
+  myPeerId = guestPeerId();
+  const url = $("wsUrl").value.replace(/\/$/, "") + "/" + $("roomKey").value.trim().toUpperCase();
+  setBadge($("wsState"), "WS: connecting...");
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setBadge($("wsState"), "WS: connected", "ok");
+    const hello = { type: "hello-sig", roomKey: $("roomKey").value.trim().toUpperCase(), peerId: myPeerId };
+    ws.send(JSON.stringify(hello));
+    log("→ WS", hello);
+    // Ask host for an offer.
+    sendSignal(HOST_PEER_ID, { kind: "join-rtc" });
+  };
+
+  ws.onclose = () => setBadge($("wsState"), "WS: closed", "bad");
+  ws.onerror = () => setBadge($("wsState"), "WS: error", "bad");
+
+  ws.onmessage = async (ev) => {
+    const frame = JSON.parse(ev.data);
+    log("← WS", frame);
+    if (frame.type === "error") return;
+    if (frame.type !== "signal") return;
+    const inner = JSON.parse(frame.payload);
+    if (inner.kind === "offer") await onOffer(inner.sdp);
+    else if (inner.kind === "ice") onRemoteIce(inner);
+  };
+
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+    ],
+  });
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    setBadge($("iceState"), "ICE: " + s, s === "connected" || s === "completed" ? "ok" : (s === "failed" ? "bad" : ""));
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      sendSignal(HOST_PEER_ID, {
+        kind: "ice",
+        candidate: e.candidate.candidate,
+        sdpMid: e.candidate.sdpMid,
+        sdpMLineIndex: e.candidate.sdpMLineIndex ?? 0,
+      });
+    }
+  };
+  pc.ondatachannel = (e) => {
+    dc = e.channel;
+    wireDataChannel();
+  };
+
+  $("joinBtn").disabled = true;
+  $("leaveBtn").disabled = false;
+}
+
+let pendingIce = [];
+
+async function onOffer(sdp) {
+  await pc.setRemoteDescription({ type: "offer", sdp });
+  for (const c of pendingIce) await pc.addIceCandidate(c);
+  pendingIce = [];
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  sendSignal(HOST_PEER_ID, { kind: "answer", sdp: answer.sdp });
+}
+
+function onRemoteIce(ice) {
+  const candidate = new RTCIceCandidate({
+    candidate: ice.candidate,
+    sdpMid: ice.sdpMid,
+    sdpMLineIndex: ice.sdpMLineIndex,
+  });
+  if (pc.remoteDescription) pc.addIceCandidate(candidate);
+  else pendingIce.push(candidate);
+}
+
+function wireDataChannel() {
+  setBadge($("dcState"), "Data channel: connecting...");
+  dc.onopen = () => {
+    setBadge($("dcState"), "Data channel: open", "ok");
+    $("playBtn").disabled = false;
+    $("pauseBtn").disabled = false;
+    // Join the room-lifetime protocol over the data channel.
+    sendControl({
+      type: "join",
+      roomKey: $("roomKey").value.trim().toUpperCase(),
+      displayName: $("displayName").value || "Desktop",
+      itemHash: $("itemHash").value,
+    });
+  };
+  dc.onclose = () => setBadge($("dcState"), "Data channel: closed", "bad");
+  dc.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    log("← DC", msg);
+    handleControlMessage(msg);
+  };
+}
+
+const video = $("video");
+let suppressLocalEvents = false;
+
+function handleControlMessage(msg) {
+  switch (msg.type) {
+    case "join-ack":
+      suppressLocalEvents = true;
+      video.currentTime = msg.positionMs / 1000;
+      if (msg.isPlaying) video.play(); else video.pause();
+      suppressLocalEvents = false;
+      break;
+    case "play":
+      suppressLocalEvents = true;
+      video.currentTime = msg.positionMs / 1000;
+      video.play();
+      suppressLocalEvents = false;
+      break;
+    case "pause":
+      suppressLocalEvents = true;
+      video.currentTime = msg.positionMs / 1000;
+      video.pause();
+      suppressLocalEvents = false;
+      break;
+    case "seek":
+      suppressLocalEvents = true;
+      video.currentTime = msg.positionMs / 1000;
+      suppressLocalEvents = false;
+      break;
+    case "position":
+      // Host heartbeat - resync if drift is large.
+      const drift = Math.abs(msg.positionMs / 1000 - video.currentTime);
+      if (drift > 1.5) {
+        suppressLocalEvents = true;
+        video.currentTime = msg.positionMs / 1000;
+        suppressLocalEvents = false;
+      }
+      if (msg.isPlaying && video.paused) video.play();
+      if (!msg.isPlaying && !video.paused) video.pause();
+      break;
+    case "error":
+      log("ERROR", msg);
+      break;
+  }
+}
+
+$("videoFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (file) video.src = URL.createObjectURL(file);
+});
+
+video.addEventListener("play", () => {
+  if (!suppressLocalEvents) sendControl({ type: "play", positionMs: Math.round(video.currentTime * 1000), by: myPeerId });
+});
+video.addEventListener("pause", () => {
+  if (!suppressLocalEvents) sendControl({ type: "pause", positionMs: Math.round(video.currentTime * 1000), by: myPeerId });
+});
+video.addEventListener("seeked", () => {
+  if (!suppressLocalEvents) sendControl({ type: "seek", positionMs: Math.round(video.currentTime * 1000), by: myPeerId });
+});
+
+$("playBtn").addEventListener("click", () => video.play());
+$("pauseBtn").addEventListener("click", () => video.pause());
+
+$("joinBtn").addEventListener("click", join);
+$("leaveBtn").addEventListener("click", () => {
+  if (dc) dc.close();
+  if (pc) pc.close();
+  if (ws) ws.close();
+  $("joinBtn").disabled = false;
+  $("leaveBtn").disabled = true;
+  $("playBtn").disabled = true;
+  $("pauseBtn").disabled = true;
+  setBadge($("wsState"), "WS: idle");
+  setBadge($("iceState"), "ICE: idle");
+  setBadge($("dcState"), "Data channel: idle");
+});
+</script>
+</body>
+</html>

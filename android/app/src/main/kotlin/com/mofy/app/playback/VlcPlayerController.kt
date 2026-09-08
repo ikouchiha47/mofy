@@ -123,6 +123,29 @@ class VlcPlayerController(
         }
     }
 
+    override fun setVideoScale(scale: VideoScale) {
+        // 16:9/4:3/etc are covered by libVLC's own ScaleType preset enum.
+        // IMAX's 1.43:1 and 1.90:1 aren't - those go through the raw
+        // aspectRatio string API instead, with scale reset to 0 (fit)
+        // since setVideoScale's presets would otherwise overwrite a custom
+        // aspect ratio set this way.
+        when (scale) {
+            VideoScale.FIT -> player.videoScale = MediaPlayer.ScaleType.SURFACE_BEST_FIT
+            VideoScale.FILL -> player.videoScale = MediaPlayer.ScaleType.SURFACE_FILL
+            VideoScale.ORIGINAL -> player.videoScale = MediaPlayer.ScaleType.SURFACE_ORIGINAL
+            VideoScale.RATIO_16_9 -> player.videoScale = MediaPlayer.ScaleType.SURFACE_16_9
+            VideoScale.RATIO_4_3 -> player.videoScale = MediaPlayer.ScaleType.SURFACE_4_3
+            VideoScale.RATIO_IMAX_143 -> {
+                player.aspectRatio = "143:100"
+                player.scale = 0f
+            }
+            VideoScale.RATIO_IMAX_190 -> {
+                player.aspectRatio = "19:10"
+                player.scale = 0f
+            }
+        }
+    }
+
     override fun release() {
         player.setMedia(null)
         player.release()

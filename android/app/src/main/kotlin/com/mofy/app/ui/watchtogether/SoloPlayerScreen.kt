@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -45,6 +46,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.mofy.app.playback.VideoScale
 import com.mofy.app.playback.VlcPlayerController
 import com.mofy.app.ui.icons.AppIcons
 import com.mofy.app.watchtogether.WatchTogetherSession
@@ -147,6 +149,8 @@ fun SoloPlayerScreen(
     var player by remember { mutableStateOf<VlcPlayerController?>(null) }
     var session by remember { mutableStateOf<WatchTogetherSession?>(null) }
     var subtitleMenuOpen by remember { mutableStateOf(false) }
+    var videoScale by remember { mutableStateOf(VideoScale.FIT) }
+    var aspectMenuOpen by remember { mutableStateOf(false) }
     var peopleMenuOpen by remember { mutableStateOf(false) }
     var currentSubtitleTrack by remember { mutableStateOf<Int?>(null) }
 
@@ -177,8 +181,16 @@ fun SoloPlayerScreen(
             // (Leave/Cancel actions) - only local player resources are
             // released here, so the session can be rebound via
             // rebindPlayer() if this screen is re-entered later.
-            runCatching {
-                if (newPlayer.durationMs > 0) onProgress(newPlayer.positionMs, newPlayer.durationMs)
+            // Forbidden for a Watch Together session (docs/tasks/watch-
+            // together-state-and-ux.md §3.E): this reads the about-to-be-
+            // released VLC player, not the room clock - flushing it into
+            // the bookmark on every Back would smear a paused-elsewhere or
+            // headless-drifted position into Continue Watching. FGS is the
+            // one place that flushes a room's position on Leave/HostLost.
+            if (newSession == null) {
+                runCatching {
+                    if (newPlayer.durationMs > 0) onProgress(newPlayer.positionMs, newPlayer.durationMs)
+                }
             }
             newPlayer.detachViews()
             newPlayer.release()
@@ -216,21 +228,37 @@ fun SoloPlayerScreen(
 
     var uiPositionMs by remember { mutableStateOf(0L) }
     var uiIsPlaying by remember { mutableStateOf(false) }
-    LaunchedEffect(currentPlayer) {
-        while (true) {
-            // The underlying native VLC object can be released out from
-            // under this loop by something other than this composable's
-            // own onDispose (e.g. a Watch Together teardown firing while
-            // this screen is still composed but minimized/backgrounded) -
-            // confirmed crash on a real device: IllegalStateException
-            // "can't get VLCObject instance" from getTime() on an
-            // already-released player. Not recoverable mid-loop; just stop
-            // polling instead of crashing the app.
-            val positionMs = runCatching { currentPlayer.positionMs }.getOrNull()
-            if (positionMs == null) break
-            uiPositionMs = positionMs
-            uiIsPlaying = runCatching { currentPlayer.isPlaying }.getOrElse { false }
-            delay(POSITION_POLL_MS)
+    // While actively dragging the seek track, incoming store/poll updates
+    // must not clobber the in-progress local value (docs/tasks/watch-
+    // together-state-and-ux.md: "Slider value while dragging ... must not
+    // [be overwritten]" - local until scrub-end).
+    var isDraggingSeek by remember { mutableStateOf(false) }
+
+    if (currentSession != null) {
+        // Watch Together: mirror the room's own store directly instead of
+        // polling the local player - correct even when this device's
+        // player is released/headless or lagging, and it's what makes a
+        // remote participant's seek/pause actually show up here (§8 step 3).
+        val liveState by currentSession.state.collectAsState()
+        if (!isDraggingSeek) uiPositionMs = liveState.positionMs
+        uiIsPlaying = liveState.isPlaying
+    } else {
+        LaunchedEffect(currentPlayer) {
+            while (true) {
+                // The underlying native VLC object can be released out from
+                // under this loop by something other than this composable's
+                // own onDispose (e.g. a Watch Together teardown firing while
+                // this screen is still composed but minimized/backgrounded) -
+                // confirmed crash on a real device: IllegalStateException
+                // "can't get VLCObject instance" from getTime() on an
+                // already-released player. Not recoverable mid-loop; just stop
+                // polling instead of crashing the app.
+                val positionMs = runCatching { currentPlayer.positionMs }.getOrNull()
+                if (positionMs == null) break
+                if (!isDraggingSeek) uiPositionMs = positionMs
+                uiIsPlaying = runCatching { currentPlayer.isPlaying }.getOrElse { false }
+                delay(POSITION_POLL_MS)
+            }
         }
     }
 
@@ -239,12 +267,18 @@ fun SoloPlayerScreen(
     // Home's "Continue Watching" always came up empty. Separate, much
     // slower loop than the position-poll above - no need to hit the DB
     // every 500ms.
-    LaunchedEffect(currentPlayer) {
-        while (true) {
-            delay(PROGRESS_SAVE_MS)
-            val durationMs = runCatching { currentPlayer.durationMs }.getOrNull() ?: break
-            val positionMs = runCatching { currentPlayer.positionMs }.getOrNull() ?: break
-            if (durationMs > 0) onProgress(positionMs, durationMs)
+    // WatchTogetherForegroundService is the sole bookmark writer for a live
+    // session (docs/tasks/watch-together-state-and-ux.md §5: "Never: screen
+    // onProgress and FGS for the same session") - this loop only runs for
+    // genuine solo playback, otherwise both would write the same DB row.
+    if (currentSession == null) {
+        LaunchedEffect(currentPlayer) {
+            while (true) {
+                delay(PROGRESS_SAVE_MS)
+                val durationMs = runCatching { currentPlayer.durationMs }.getOrNull() ?: break
+                val positionMs = runCatching { currentPlayer.positionMs }.getOrNull() ?: break
+                if (durationMs > 0) onProgress(positionMs, durationMs)
+            }
         }
     }
 
@@ -366,15 +400,80 @@ fun SoloPlayerScreen(
             }
         }
 
-        // Subtitle track picker - top-right, shown whenever libVLC reports
-        // any track at all (its own "Disable" entry plus any real ones).
-        if (tracks.isNotEmpty()) {
+        // Top-right control cluster: orientation toggle, aspect-ratio
+        // cycle, subtitle picker. Local-only, never synced across a Watch
+        // Together room - each device picks its own fit/rotation.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(contentPadding)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(contentPadding)
-                    .padding(16.dp),
+                    .size(36.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable {
+                        activity?.let {
+                            it.requestedOrientation = if (
+                                it.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                            ) {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            } else {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
             ) {
+                Text("⤢", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Box {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable { aspectMenuOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        when (videoScale) {
+                            VideoScale.FIT -> "FIT"
+                            VideoScale.FILL -> "FILL"
+                            VideoScale.ORIGINAL -> "1:1"
+                            VideoScale.RATIO_16_9 -> "16:9"
+                            VideoScale.RATIO_4_3 -> "4:3"
+                            VideoScale.RATIO_IMAX_143 -> "1.43"
+                            VideoScale.RATIO_IMAX_190 -> "1.90"
+                        },
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                DropdownMenu(
+                    expanded = aspectMenuOpen,
+                    onDismissRequest = { aspectMenuOpen = false },
+                ) {
+                    VideoScale.entries.forEach { scale ->
+                        DropdownMenuItem(
+                            text = { Text(scale.label) },
+                            onClick = {
+                                videoScale = scale
+                                currentPlayer.setVideoScale(scale)
+                                aspectMenuOpen = false
+                            },
+                        )
+                    }
+                }
+            }
+            // Subtitle track picker, shown whenever libVLC reports any
+            // track at all (its own "Disable" entry plus any real ones).
+            if (tracks.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -539,8 +638,12 @@ fun SoloPlayerScreen(
                 Text(formatMs(uiPositionMs), style = MaterialTheme.typography.labelSmall, color = Color.White)
                 SeekTrack(
                     fraction = (uiPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f),
-                    onFractionChange = { fraction -> uiPositionMs = (fraction * durationMs).toLong() },
+                    onFractionChange = { fraction ->
+                        isDraggingSeek = true
+                        uiPositionMs = (fraction * durationMs).toLong()
+                    },
                     onFractionChangeFinished = {
+                        isDraggingSeek = false
                         if (currentSession != null) currentSession.localSeek(uiPositionMs) else currentPlayer.seekTo(uiPositionMs)
                     },
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),

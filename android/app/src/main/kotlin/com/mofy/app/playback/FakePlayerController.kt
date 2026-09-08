@@ -75,6 +75,10 @@ class FakePlayerController(initialDurationMs: Long = 100_000L) : PlayerControlle
         audioTrackImpl = index
     }
 
+    override fun setVideoScale(scale: VideoScale) {
+        notify("setVideoScale", null)
+    }
+
     override fun release() {
         released = true
     }

@@ -57,6 +57,7 @@ class SyncEngineFlowSpecTest {
         override fun setSubtitleTrack(index: Int?) { if (released) error("released") }
         override fun setAudioTrack(index: Int?) { if (released) error("released") }
         override fun release() { released = true }
+        override fun setVideoScale(scale: com.mofy.app.playback.VideoScale) {}
     }
 
     // --- §3 virtual clock ------------------------------------------------

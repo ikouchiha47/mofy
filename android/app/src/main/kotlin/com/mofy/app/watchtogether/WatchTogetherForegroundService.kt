@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.mofy.app.MainActivity
+import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.watchtogether.sync.SyncEngineConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,9 +58,22 @@ class WatchTogetherForegroundService : Service() {
         }
 
         scope.launch {
+            val libraryDao = AppDatabase.get(applicationContext).libraryDao()
             while (true) {
                 delay(SyncEngineConfig.POSITION_HEARTBEAT_MS)
-                WatchTogetherSessionManager.sessions.value.forEach { it.session.heartbeatTick() }
+                WatchTogetherSessionManager.sessions.value.forEach { active ->
+                    active.session.heartbeatTick()
+                    // FGS is the sole bookmark writer for a live room
+                    // (docs/tasks/watch-together-state-and-ux.md §5/§8 step
+                    // 2) - SoloPlayerScreen's own onProgress loop is gated
+                    // off whenever a session is live, so this is never a
+                    // second writer for the same item.
+                    val item = active.item ?: return@forEach
+                    val durationMs = active.session.currentDurationMs()
+                    if (durationMs > 0) {
+                        libraryDao.updateProgress(item.id, active.session.state.value.positionMs, durationMs)
+                    }
+                }
             }
         }
 

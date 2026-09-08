@@ -4,6 +4,10 @@ import com.mofy.app.playback.PlayerController
 import com.mofy.app.watchtogether.Participant
 import com.mofy.app.watchtogether.Role
 import com.mofy.app.watchtogether.SessionLimits
+import com.mofy.app.watchtogether.SessionState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import com.mofy.app.watchtogether.protocol.WtMessage
 import com.mofy.app.watchtogether.protocol.WtMessageCodec
 import com.mofy.app.watchtogether.sync.SyncEngineConfig.CONTROL_DEBOUNCE_MS
@@ -108,6 +112,32 @@ class SyncEngine(
     private var statePositionMs: Long = 0L
     private var stateIsPlaying: Boolean = false
 
+    // Duration doesn't change during playback, so unlike position it needs
+    // no extrapolation - just the last value read off the real player,
+    // cached for FGS's bookmark write once the player is released/headless.
+    private var stateDurationMs: Long = 0L
+
+    // Single source of truth for anything outside this engine that needs
+    // "what's the room's state right now" - WatchTogetherSession.state is a
+    // direct pass-through to this, not a second copy (docs/tasks/watch-
+    // together-state-and-ux.md §8 step 1: "Engine is the only room clock").
+    private val _state = MutableStateFlow(
+        SessionState(roomKey, itemHash, role, selfId, emptyList(), 0L, false),
+    )
+    val state: StateFlow<SessionState> = _state.asStateFlow()
+
+    private fun publishState() {
+        _state.value = SessionState(
+            roomKey = roomKey,
+            itemHash = itemHash,
+            role = role,
+            localParticipantId = selfId,
+            participants = participants.values.toList(),
+            positionMs = statePositionMs,
+            isPlaying = stateIsPlaying,
+        )
+    }
+
     init {
         participants[localParticipant.id] = localParticipant.copy(role = role)
     }
@@ -210,6 +240,7 @@ class SyncEngine(
         val playing = runCatching { player.isPlaying }.getOrNull()
         if (pos != null && playing != null) {
             setState(pos, playing)
+            runCatching { player.durationMs }.getOrNull()?.let { stateDurationMs = it }
             return pos
         }
         return if (role == Role.HOST && stateIsPlaying) {
@@ -218,6 +249,9 @@ class SyncEngine(
             statePositionMs
         }
     }
+
+    /** Last known duration - doesn't need the bound/unbound fallback dance position does. */
+    fun currentDurationMs(): Long = stateDurationMs
 
     fun currentIsPlaying(): Boolean {
         val pos = runCatching { player.positionMs }.getOrNull()
@@ -233,6 +267,7 @@ class SyncEngine(
         statePositionMs = positionMs
         stateIsPlaying = isPlaying
         stateAnchorMs = clock()
+        publishState()
     }
 
     fun localPlay() {
@@ -330,6 +365,13 @@ class SyncEngine(
         // coroutine - crashed the whole app, not just this loop.
         val positionMs = currentPositionMs()
         val isPlaying = currentIsPlaying()
+        // Persist the (possibly extrapolated) tick into the store, not just
+        // broadcast it - without this, a headless-but-playing room's own
+        // state/state.value never advances between remote events, so a
+        // "live" toast reading this engine's state would sit frozen even
+        // though the room is genuinely still playing (docs/tasks/watch-
+        // together-state-and-ux.md §8 step 1).
+        setState(positionMs, isPlaying)
         broadcast(
             WtMessage.Position(
                 positionMs = positionMs,
@@ -431,6 +473,7 @@ class SyncEngine(
     }
 
     private fun emitParticipants() {
+        publishState()
         events?.onEvent(SyncEvent.ParticipantsChanged(participants.values.toList()))
     }
 

@@ -13,11 +13,9 @@ import com.mofy.app.watchtogether.webrtc.GuestPeer
 import com.mofy.app.watchtogether.webrtc.HostHub
 import com.mofy.app.watchtogether.webrtc.PeerConnectionFactoryHolder
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 /**
@@ -46,8 +44,22 @@ class WatchTogetherSession private constructor(
         data object HostLost : WtEvent
     }
 
-    private val _state = MutableStateFlow(snapshot())
-    val state: StateFlow<SessionState> = _state.asStateFlow()
+    // Direct pass-through, not a second copy - SyncEngine is the only room
+    // clock (docs/tasks/watch-together-state-and-ux.md §8 step 1). This
+    // used to be its own MutableStateFlow, refreshed only at scattered
+    // trigger points (local actions, a narrow set of SyncEvents) - anything
+    // that changed the engine's state without going through one of those
+    // exact call sites (e.g. a remote seek arriving while headless) left
+    // this frozen and stale.
+    val state: StateFlow<SessionState> = engine.state
+
+    // Diffing target for WtEvent.ParticipantJoined/Left below, kept
+    // separately from `state` on purpose: SyncEngine.emitParticipants()
+    // publishes to `engine.state` *before* firing the SyncEvent this
+    // reacts to, so by the time onSyncEvent runs, state.value.participants
+    // is already the *new* list - reading it here would compare new
+    // against new. This cache is the only correct source of "previous."
+    private var lastKnownParticipants: List<Participant> = emptyList()
 
     private val _events = MutableSharedFlow<WtEvent>(
         replay = 8,
@@ -58,15 +70,18 @@ class WatchTogetherSession private constructor(
     val deepLink: String
         get() = RoomCode.toDeepLink(roomKey, signalingUrl)
 
-    fun localPlay() = engine.localPlay().also { refreshState() }
-    fun localPause() = engine.localPause().also { refreshState() }
-    fun localSeek(positionMs: Long) = engine.localSeek(positionMs).also { refreshState() }
+    fun localPlay() = engine.localPlay()
+    fun localPause() = engine.localPause()
+    fun localSeek(positionMs: Long) = engine.localSeek(positionMs)
     fun localSetSubtitle(index: Int?) = engine.localSetSubtitle(index)
     fun localSetAudio(index: Int?) = engine.localSetAudio(index)
     fun heartbeatTick() = engine.heartbeatTick()
 
+    /** For FGS's bookmark write - duration doesn't live in [state] to avoid touching every SessionState call site for a value only the bookmark writer needs. */
+    fun currentDurationMs(): Long = engine.currentDurationMs()
+
     /** Swaps in a real player without ending the session - see SyncEngine.rebindPlayer. */
-    fun rebindPlayer(newPlayer: PlayerController) = engine.rebindPlayer(newPlayer).also { refreshState() }
+    fun rebindPlayer(newPlayer: PlayerController) = engine.rebindPlayer(newPlayer)
 
     fun end() {
         engine.close()
@@ -82,7 +97,7 @@ class WatchTogetherSession private constructor(
             is SyncEngine.SyncEvent.Joined -> _events.tryEmit(WtEvent.Joined)
             is SyncEngine.SyncEvent.HostLost -> _events.tryEmit(WtEvent.HostLost)
             is SyncEngine.SyncEvent.ParticipantsChanged -> {
-                val previous = _state.value.participants.map { it.id }.toSet()
+                val previous = lastKnownParticipants.map { it.id }.toSet()
                 event.participants.forEach { p ->
                     if (p.id !in previous && p.id != engine.localParticipantId()) {
                         _events.tryEmit(WtEvent.ParticipantJoined(p))
@@ -93,34 +108,10 @@ class WatchTogetherSession private constructor(
                         _events.tryEmit(WtEvent.ParticipantLeft(id))
                     }
                 }
-                refreshState()
+                lastKnownParticipants = event.participants
             }
         }
     }
-
-    private fun refreshState() {
-        _state.value = snapshot()
-    }
-
-    // Position/isPlaying come from the engine, not a locally-held player
-    // reference - SyncEngine is the single owner of "what's the current
-    // player" (it swaps its own internal reference on rebindPlayer() and
-    // falls back to tracked state when the player is unbound/released, see
-    // SyncEngine.currentPositionMs()). WatchTogetherSession used to hold a
-    // second, independent player reference here that never got updated on
-    // rebind - every LiveSessionBar "paused · X:XX" label and resume-on-
-    // reentry read that stale copy (always position 0) forever, regardless
-    // of what the engine/real player actually tracked. Read through the
-    // engine instead of duplicating the state.
-    private fun snapshot(): SessionState = SessionState(
-        roomKey = roomKey,
-        itemHash = itemHash,
-        role = role,
-        localParticipantId = engine.localParticipantId(),
-        participants = engine.participants(),
-        positionMs = engine.currentPositionMs(),
-        isPlaying = engine.currentIsPlaying(),
-    )
 
     companion object {
         fun host(
@@ -277,8 +268,8 @@ class WatchTogetherSession private constructor(
                 embeddedServer = embeddedServer,
                 localParticipant = localParticipant,
             )
+            session.lastKnownParticipants = engine.participants()
             engine.start()
-            session.refreshState()
             return session
         }
     }

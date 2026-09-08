@@ -103,6 +103,11 @@ User: Play on Detail → watch → Back.
 - Bookmark: Player screen periodic + flush on dispose.
 - No session, no FGS, no heartbeats.
 
+```mermaid
+flowchart LR
+    Play[Play on Detail] --> Watch[Watch] --> Back[Back]
+```
+
 ### B. Host creates, shares, waits, starts
 
 User: Detail → Watch Together → share link → maybe WhatsApp → Start.
@@ -119,6 +124,14 @@ Side effects: Listing row, notification, Detail pill for that
 `itemHash`. Bookmark: do **not** write until they’re actually playing
 (or on Leave). Lobby-at-0 must not smash a 40-minute solo bookmark.
 
+```mermaid
+flowchart LR
+    Detail --> WT[Watch Together] --> Share[Share link]
+    Share --> Msg[WhatsApp / other app]
+    Msg --> Back[Back to app] --> Start[Start watching]
+    Share --> Start
+```
+
 ### C. Guest joins (link / QR / paste)
 
 User: open link → local copy? duration? → lobby or hot-join.
@@ -128,6 +141,19 @@ User: open link → local copy? duration? → lobby or hot-join.
   Room stays up for people already in. `FailedP2P` ≠ Leave ≠ HostLost.
 - Hot-join: apply join-ack to **room clock on this device**, then
   render. Bookmark write starts only once they’re in and playing.
+
+```mermaid
+flowchart LR
+    Link[Open link / QR / paste] --> Check{Local copy?}
+    Check -- no --> Fail[Hard fail]
+    Check -- yes --> Dur{Duration ok?}
+    Dur -- no --> Fail
+    Dur -- yes --> Join{Started already?}
+    Join -- no --> Lobby[Lobby: waiting for host]
+    Join -- yes --> Hot[Hot-join to room clock]
+    Lobby --> Start[Start watching]
+    Hot --> Play[Render + play]
+```
 
 ### D. Anyone play / pause / seek
 
@@ -140,6 +166,18 @@ User: tap pause, scrub, nudge.
 
 Side effects: every rendering player seeks; headless members only
 update the store (toast/Listing time can tick).
+
+```mermaid
+flowchart LR
+    Finger[Finger on slider] --> Local[Local slider value]
+    Local -->|scrub-end / debounce| Seek[localSeek]
+    Seek --> Host[Host serializes]
+    Host --> Fan[Fan-out with seq + ts]
+    Fan --> Stores[Every engine store updates]
+    Stores --> Heads[Headless members: store only]
+    Stores --> Render[Bound players: seek]
+    Fan -. echo-suppressed to originator .-> Finger
+```
 
 ### E. Back from Player (in-app) or Home / other app
 
@@ -155,6 +193,15 @@ User: not leaving the party.
 If `onDispose` writes VLC (or 0) into the bookmark here, Continue
 Watching lies. That write is forbidden for WT.
 
+```mermaid
+flowchart LR
+    Player -->|Back / Home| Headless[inRoom && !rendering]
+    Headless -->|released VLC, stop painting| RoomLive[Room keeps playing for others]
+    Headless -->|FGS: store -> bookmark| DB
+    Headless -->|Listing / notification| Rebind[rebindPlayer from store]
+    Rebind --> Player
+```
+
 ### F. Switch rooms / second Watch Party
 
 User: Back, start or join another room (cap 4).
@@ -167,6 +214,15 @@ User: Back, start or join another room (cap 4).
   Same title, two rooms → one library row, last write wins. Don’t
   invent per-room SQLite.
 
+```mermaid
+flowchart LR
+    RoomA[Room A store] --> FGS
+    RoomB[Room B store] --> FGS
+    FGS[One foreground service] --> Player[One audible player]
+    FGS --> DB[(bookmarks)]
+    Player -->|switch, no pause| RoomB
+```
+
 ### G. Leave
 
 - **Guest Leave:** this device drops membership. Flush **this** room
@@ -175,6 +231,16 @@ User: Back, start or join another room (cap 4).
 - **Host Leave:** confirm. Room dies. Every guest demotes to solo at
   last room clock. Each device flushes that position to its own
   bookmark, then solo owns the player + DB.
+
+```mermaid
+stateDiagram-v2
+    [*] --> InRoom
+    InRoom --> GuestLeft: guest Leave (flush bookmark, others continue)
+    InRoom --> HostLeft: host Leave (confirm)
+    HostLeft --> Demoted: guests flush bookmark -> solo
+    GuestLeft --> [*]
+    Demoted --> [*]
+```
 
 ### H. Host gone for real (kill / force-stop / grace expired)
 
@@ -185,16 +251,42 @@ User: Back, start or join another room (cap 4).
 - Host relaunch: **new** room. Do not resurrect the old bookmark as
   if the party continued.
 
+```mermaid
+stateDiagram-v2
+    [*] --> HostUp
+    HostUp --> HostDown: kill / force-stop / grace expired
+    HostUp --> Flap: brief network blip (inside grace)
+    Flap --> HostUp: ICE recovered
+    HostDown --> Demoted: guests flush bookmark, solo from here
+    HostDown --> Dead: link is dead
+    Demoted --> [*]
+```
+
 ### I. Movie ended
 
 Room can sit paused at duration (OPEN vs auto-end). Bookmark may mark
 finished (≥95% already used by Continue Watching). Do not demote just
 because credits rolled.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Playing
+    Playing --> Ended: credits / duration reached
+    Ended --> PausedAtEnd: room stays live, paused at duration (OPEN)
+    Ended --> AutoEnd: auto-leave (OPEN)
+```
+
 ### J. Phone call / headphones / rotation
 
 Local audio focus / Surface. Default: **do not** pause the room
 (OPEN in flows doc). Rotation = rebind Surface to same store position.
+
+```mermaid
+flowchart LR
+    Call[Phone call / headphones] --> Local[Local audio focus only]
+    Local --> Room[Room keeps playing - no room pause]
+    Rotate[Rotation] --> Rebind[Rebind Surface to same store position]
+```
 
 ---
 
@@ -243,6 +335,18 @@ Headless: store ← virtual clock + remote      store → network
 Rebind:   VLC ← store
 Bookmark: SQLite ← store (WT) or VLC (solo)
 Slider:   local until scrub-end → store
+```
+
+```mermaid
+flowchart LR
+    VLC[VLC player] -- "mirror on success (bound)" --> Store[Engine store<br/>positionMs · isPlaying · anchor]
+    Virtual[Virtual clock + remote events] -- "headless" --> Store
+    Slider[Slider finger] -- "local until scrub-end" --> Store
+    Store --> Network[Network fan-out]
+    Store --> DB[(SQLite bookmark)]
+    Store --> UI[UI / toast]
+    Store -- "rebindPlayer seek" --> VLC
+    VLC -. "solo only" .-> DB
 ```
 
 If VLC throws after release, ignore it. The store already knows.

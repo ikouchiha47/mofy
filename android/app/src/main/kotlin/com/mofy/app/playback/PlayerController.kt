@@ -24,4 +24,17 @@ interface PlayerController {
     fun setAudioTrack(index: Int?)
 
     fun release()
+
+    /** Local-only, never synced across a Watch Together room - each device picks its own fit. */
+    fun setVideoScale(scale: VideoScale)
+}
+
+enum class VideoScale(val label: String) {
+    FIT("Fit"),
+    FILL("Fill"),
+    ORIGINAL("Original"),
+    RATIO_16_9("16:9"),
+    RATIO_4_3("4:3"),
+    RATIO_IMAX_143("IMAX 1.43:1"),
+    RATIO_IMAX_190("IMAX 1.90:1"),
 }

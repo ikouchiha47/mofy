@@ -20,6 +20,7 @@ fun PlayerScreen(
     contentPadding: PaddingValues,
     mediaUri: String,
     itemTitle: String,
+    initialPositionMs: Long = 0L,
     createSession: (PlayerController) -> WatchTogetherSession,
     onBack: () -> Unit,
     onInvite: () -> Unit,
@@ -28,6 +29,7 @@ fun PlayerScreen(
     SoloPlayerScreen(
         contentPadding = contentPadding,
         mediaUri = mediaUri,
+        initialPositionMs = initialPositionMs,
         createSession = createSession,
         onBack = onBack,
         onInvite = onInvite,

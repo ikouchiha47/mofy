@@ -14,6 +14,7 @@ import com.mofy.app.watchtogether.sync.SyncEngineConfig.HOST_PEER_ID
 import com.mofy.app.watchtogether.transport.FakeWtTransport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -93,6 +94,7 @@ class SyncEngineFlowSpecTest {
         host.rebindPlayer(newPlayer)
 
         assertEquals(77_000, newPlayer.positionMsBacking, "rebind must not seek to 0")
+        assertTrue(newPlayer.isPlayingBacking, "rebind must resume playing to match virtual isPlaying")
     }
 
     @Test
@@ -214,7 +216,7 @@ class SyncEngineFlowSpecTest {
     }
 
     @Test
-    fun `SE-VCLK-09 guest released player inbound seek does not crash or echo`() {
+    fun `SE-VCLK-09 guest released player inbound seek is remembered on rebind`() {
         val player = ThrowingAfterReleasePlayerController()
         player.seekTo(5_000)
         val transport = FakeWtTransport()
@@ -228,6 +230,10 @@ class SyncEngineFlowSpecTest {
 
         val outboundSeeks = messages(transport).filterIsInstance<WtMessage.Seek>()
         assertTrue(outboundSeeks.isEmpty(), "guest must not echo a host seek back out")
+
+        val newPlayer = ThrowingAfterReleasePlayerController()
+        guest.rebindPlayer(newPlayer)
+        assertEquals(90_000, newPlayer.positionMsBacking, "re-enter must seek to last applied host-fanout, not 0")
     }
 
     @Test
@@ -267,7 +273,7 @@ class SyncEngineFlowSpecTest {
     // --- §4 control plane -----------------------------------------------
 
     @Test
-    fun `SE-CTL-01 scrub burst coalesces to a single emitted seek`() {
+    fun `SE-CTL-01 scrub burst emits nothing until debounce flush, then last seek`() {
         val player = ThrowingAfterReleasePlayerController()
         val transport = FakeWtTransport()
         val host = hostEngine(player, transport)
@@ -277,13 +283,19 @@ class SyncEngineFlowSpecTest {
 
         listOf(1_000L, 2_000L, 3_000L, 4_000L, 5_000L).forEach { host.localSeek(it) }
 
+        val beforeFlush = messages(transport).filterIsInstance<WtMessage.Seek>()
+        assertTrue(beforeFlush.isEmpty(), "scrub-end/debounce: no per-frame seek until the window flushes")
+
+        nowMs += CONTROL_DEBOUNCE_MS
+        host.tick()
+
         val seeks = messages(transport).filterIsInstance<WtMessage.Seek>()
-        assertEquals(1, seeks.size, "rapid scrub must coalesce to one seek")
+        assertEquals(1, seeks.size, "flush must emit exactly one seek")
         assertEquals(5_000, seeks.single().positionMs, "last scrub position wins")
     }
 
     @Test
-    fun `SE-CTL-02 after debounce window a new seek emits`() {
+    fun `SE-CTL-02 after debounce window a new seek is a separate emit`() {
         val player = ThrowingAfterReleasePlayerController()
         val transport = FakeWtTransport()
         val host = hostEngine(player, transport)
@@ -291,10 +303,17 @@ class SyncEngineFlowSpecTest {
         transport.connectPeer("g1")
         transport.sent.clear()
 
+        host.localSeek(5_000)
         nowMs += CONTROL_DEBOUNCE_MS
         host.tick()
-        host.localSeek(8_000)
+        transport.sent.clear()
 
+        host.localSeek(8_000)
+        val beforeFlush = messages(transport).filterIsInstance<WtMessage.Seek>()
+        assertTrue(beforeFlush.isEmpty(), "the new scrub is also debounced")
+
+        nowMs += CONTROL_DEBOUNCE_MS
+        host.tick()
         val seeks = messages(transport).filterIsInstance<WtMessage.Seek>()
         assertEquals(1, seeks.size)
         assertEquals(8_000, seeks.single().positionMs)
@@ -340,25 +359,35 @@ class SyncEngineFlowSpecTest {
     }
 
     @Test
-    fun `SE-CTL-05 ignore window drops a competing seek`() {
+    fun `SE-CTL-05 ignore window drops local slider echo after a remote seek`() {
         val player = ThrowingAfterReleasePlayerController()
         player.seekTo(0)
         val transport = FakeWtTransport()
         val guest = guestEngine(player, transport)
         guest.start()
         transport.connectPeer(HOST_PEER_ID)
+        transport.sent.clear()
 
         transport.deliver(HOST_PEER_ID, WtMessageCodec.encode(WtMessage.Seek(positionMs = 90_000, by = "host-1")))
         assertEquals(90_000, player.positionMsBacking)
 
         nowMs += 100 // < CONTROL_IGNORE_WINDOW_MS
-        transport.deliver(HOST_PEER_ID, WtMessageCodec.encode(WtMessage.Seek(positionMs = 10_000, by = "other")))
-        assertEquals(90_000, player.positionMsBacking, "competing seek inside ignore window must be dropped")
+        guest.localSeek(10_000)
+        assertEquals(90_000, player.positionMsBacking, "local slider must not override a just-applied remote seek")
+        assertTrue(
+            messages(transport).filterIsInstance<WtMessage.Seek>().isEmpty(),
+            "must not emit a seek that would ping-pong the room",
+        )
 
         nowMs += CONTROL_IGNORE_WINDOW_MS
         guest.tick()
-        transport.deliver(HOST_PEER_ID, WtMessageCodec.encode(WtMessage.Seek(positionMs = 10_000, by = "other")))
-        assertEquals(10_000, player.positionMsBacking, "seek outside ignore window applies")
+        guest.localSeek(10_000)
+        nowMs += CONTROL_DEBOUNCE_MS
+        guest.tick()
+        assertEquals(10_000, player.positionMsBacking, "after the ignore window a local scrub applies")
+        val outbound = messages(transport).filterIsInstance<WtMessage.Seek>()
+        assertEquals(1, outbound.size)
+        assertEquals(10_000, outbound.single().positionMs)
     }
 
     @Test
@@ -391,6 +420,7 @@ class SyncEngineFlowSpecTest {
 
         transport.deliver(HOST_PEER_ID, WtMessageCodec.encode(WtMessage.Position(positionMs = 60_000, isPlaying = true, ts = 1L)))
         assertFalse(player.isPlayingBacking, "a stale heartbeat must not re-play a paused room")
+        assertEquals(50_000, player.positionMsBacking, "stale heartbeat must not seek off the pause position")
     }
 
     @Test
@@ -438,10 +468,17 @@ class SyncEngineFlowSpecTest {
         nowMs = 5_000_000L
         transport.deliver("g1", WtMessageCodec.encode(WtMessage.Seek(positionMs = 12_000, by = "guest-1")))
 
+        // A lone relay seek is still debounced like any other seek (one
+        // code path, no special-casing) - it flushes on tick(), stamped
+        // with the host's clock at flush time, not at receipt time.
+        nowMs += CONTROL_DEBOUNCE_MS
+        host.tick()
+
         val fanToG2 = outboundTo(transport, "g2").filterIsInstance<WtMessage.Seek>()
         assertEquals(1, fanToG2.size)
         assertEquals(12_000, fanToG2.single().positionMs)
         assertEquals(nowMs, fanToG2.single().ts, "host must stamp its own clock on the fan-out")
+        assertNotNull(fanToG2.single().seq, "host must assign seq so heartbeats can lose to newer controls")
     }
 
     @Test
@@ -500,22 +537,63 @@ class SyncEngineFlowSpecTest {
     }
 
     @Test
-    fun `SE-NET-03 reconnect inside grace cancels the demote`() {
+    fun `SE-NET-03 reconnect inside grace cancels the demote and resyncs from snapshot`() {
         val events = mutableListOf<SyncEngine.SyncEvent>()
+        val player = ThrowingAfterReleasePlayerController()
+        player.seekTo(12_000)
+        player.play()
         val transport = FakeWtTransport()
-        val guest = guestEngine(ThrowingAfterReleasePlayerController(), transport, events = events)
+        val guest = guestEngine(player, transport, events = events)
         guest.start()
         transport.connectPeer(HOST_PEER_ID)
 
         transport.disconnectPeer(HOST_PEER_ID)
         nowMs += HOST_DISCONNECT_GRACE_MS / 2
         guest.tick()
+        assertFalse(events.contains(SyncEngine.SyncEvent.HostLost))
 
         transport.connectPeer(HOST_PEER_ID)
+        transport.deliver(
+            HOST_PEER_ID,
+            WtMessageCodec.encode(
+                WtMessage.JoinAck(
+                    participantId = "guest-temp",
+                    participants = listOf(
+                        Participant("host-1", "Alex", Role.HOST),
+                        Participant("guest-temp", "Priya", Role.GUEST),
+                    ),
+                    positionMs = 44_000,
+                    isPlaying = true,
+                ),
+            ),
+        )
+        assertEquals(44_000, player.positionMsBacking, "reconnect snapshot must seek like hot-join")
+        assertTrue(player.isPlayingBacking)
+
         nowMs += HOST_DISCONNECT_GRACE_MS
         guest.tick()
-
         assertFalse(events.contains(SyncEngine.SyncEvent.HostLost), "reconnect inside grace must cancel demote")
+    }
+
+    @Test
+    fun `SE-NET-04 guest flap does not kill the room`() {
+        val events = mutableListOf<SyncEngine.SyncEvent>()
+        val transport = FakeWtTransport()
+        val host = hostEngine(ThrowingAfterReleasePlayerController(), transport, events = events)
+        host.start()
+        transport.connectPeer("g1")
+        transport.connectPeer("g2")
+        transport.deliver("g1", WtMessageCodec.encode(WtMessage.Join(roomKey, "Priya", itemHash)))
+        transport.deliver("g2", WtMessageCodec.encode(WtMessage.Join(roomKey, "Sam", itemHash)))
+        transport.sent.clear()
+
+        transport.disconnectPeer("g1")
+
+        assertFalse(events.contains(SyncEngine.SyncEvent.HostLost), "a guest drop is not host death")
+        assertEquals(2, host.participants().size, "host + remaining guest")
+        val left = outboundTo(transport, "g2").filterIsInstance<WtMessage.ParticipantEvent>()
+            .filter { it.op == WtMessage.ParticipantEvent.Op.LEFT }
+        assertEquals(1, left.size)
     }
 
     @Test
@@ -648,6 +726,7 @@ class SyncEngineFlowSpecTest {
     private fun hostEngine(
         player: PlayerController,
         transport: FakeWtTransport,
+        events: MutableList<SyncEngine.SyncEvent>? = null,
     ) = SyncEngine(
         role = Role.HOST,
         roomKey = roomKey,
@@ -656,6 +735,9 @@ class SyncEngineFlowSpecTest {
         player = player,
         transport = transport,
         clock = clock,
+        events = events?.let { list ->
+            SyncEngine.Listener { event -> list.add(event) }
+        },
     )
 
     private fun guestEngine(

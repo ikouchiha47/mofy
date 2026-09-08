@@ -27,6 +27,7 @@ class VlcPlayerController(
     mediaUri: String,
     subtitleUri: String? = null,
     subtitle2Uri: String? = null,
+    startPositionMs: Long = 0L,
 ) : PlayerController {
 
     private val libVlc: LibVLC = LibVLC(context.applicationContext)
@@ -61,6 +62,18 @@ class VlcPlayerController(
         // libVLC's preferred default track over the second one.
         subtitleUri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 2, Uri.parse(it).toString())) }
         subtitle2Uri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 1, Uri.parse(it).toString())) }
+        // Resume position is set as a media option, applied natively by
+        // libVLC as playback starts - not via a seekTo() call after the
+        // fact. A setTime() call issued before the native player has
+        // actually started playing (media not yet opened/parsed) is
+        // unreliable in libVLC and gets silently dropped, confirmed on a
+        // real device: construct -> attachViews -> seekTo(resumeMs) ->
+        // play() never resumed, always restarted at 0 even though the
+        // computed position was correct. :start-time avoids the race
+        // entirely instead of working around it.
+        if (startPositionMs > 0) {
+            media.addOption(":start-time=${startPositionMs / 1000.0}")
+        }
         try {
             player.media = media
         } finally {
@@ -117,6 +130,15 @@ class VlcPlayerController(
         libVlc.release()
     }
 
+    // libVLC's own attachViews/detachViews are NOT idempotent - calling
+    // attachViews while already attached throws IllegalStateException
+    // ("Can't set view when already attached"), confirmed crash on a real
+    // device: a lifecycle observer's ON_RESUME fired attachViews again
+    // right after the initial construction-time attach. Track state here
+    // so every caller can call either method freely without knowing
+    // whether some other call site already did.
+    private var isAttached = false
+
     /**
      * Attaches the video output to a `VLCVideoLayout`. Needed by callers
      * (Compose `AndroidView`) since libVLC's MediaPlayer is not exposed
@@ -124,10 +146,14 @@ class VlcPlayerController(
      * concern".
      */
     fun attachViews(videoLayout: VLCVideoLayout) {
+        if (isAttached) return
         player.attachViews(videoLayout, null, false, false)
+        isAttached = true
     }
 
     fun detachViews() {
+        if (!isAttached) return
         player.detachViews()
+        isAttached = false
     }
 }

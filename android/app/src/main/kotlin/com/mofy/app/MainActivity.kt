@@ -844,20 +844,33 @@ private fun MofyApp(
                 }
                 val movieUri = decode("uri") ?: ""
                 val soloLibraryItemId = decode("libraryItemId")
-                com.mofy.app.ui.watchtogether.SoloPlayerScreen(
-                    contentPadding = contentPadding,
-                    mediaUri = movieUri,
-                    subtitleUri = decode("subtitleUri"),
-                    subtitle2Uri = decode("subtitle2Uri"),
-                    onBack = { navController.popBackStack() },
-                    onProgress = { positionMs, durationMs ->
-                        if (soloLibraryItemId != null) {
-                            coroutineScope.launch {
-                                database.libraryDao().updateProgress(soloLibraryItemId, positionMs, durationMs)
+                val soloItem by (soloLibraryItemId?.let { database.libraryDao().observeById(it) } ?: kotlinx.coroutines.flow.emptyFlow())
+                    .collectAsState(initial = null)
+                // soloItem is DB-Flow-backed (resolves asynchronously) while
+                // movieUri is a synchronous nav arg - without this gate,
+                // SoloPlayerScreen's player-construction effect could fire
+                // before soloItem resolves, capturing initialPositionMs=0
+                // and never retrying (same class of race as the mediaUri
+                // blank-then-real one already fixed there).
+                if (soloLibraryItemId != null && soloItem == null) {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "Loading…")
+                } else {
+                    com.mofy.app.ui.watchtogether.SoloPlayerScreen(
+                        contentPadding = contentPadding,
+                        mediaUri = movieUri,
+                        subtitleUri = decode("subtitleUri"),
+                        subtitle2Uri = decode("subtitle2Uri"),
+                        initialPositionMs = soloItem?.lastPositionMs ?: 0L,
+                        onBack = { navController.popBackStack() },
+                        onProgress = { positionMs, durationMs ->
+                            if (soloLibraryItemId != null) {
+                                coroutineScope.launch {
+                                    database.libraryDao().updateProgress(soloLibraryItemId, positionMs, durationMs)
+                                }
                             }
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
             composable(PushedRoute.LINK) { backStack ->
                 val linkItemId = backStack.arguments?.getString("itemId") ?: ""
@@ -990,11 +1003,19 @@ private fun MofyApp(
                     // rule as guest join.
                     var hostError by remember(resolvedItem.id) { mutableStateOf<String?>(null) }
                     val hostSession = remember(resolvedItem.id) {
-                        runCatching {
+                        // Reuse a live session for this item instead of minting a
+                        // second concurrent room - two rooms hosting the same
+                        // item would each independently write progress to the
+                        // same LibraryItem row.
+                        WatchTogetherSessionManager.hostSessionFor(resolvedItem.id) ?: runCatching {
                             WatchTogetherSession.host(
                                 itemHash = ItemHash.of(resolvedItem),
                                 displayName = "You",
-                                player = FakePlayerController(),
+                                // Seed the room's starting position from the
+                                // last saved progress instead of always 0 -
+                                // same column SoloPlayerScreen's Continue
+                                // Watching already reads.
+                                player = FakePlayerController().apply { seekTo(resolvedItem.lastPositionMs) },
                                 appContext = context,
                             )
                         }.onFailure { hostError = it.message ?: "Could not start session" }.getOrNull()
@@ -1011,7 +1032,21 @@ private fun MofyApp(
                         CreateRoomScreen(
                             contentPadding = contentPadding,
                             session = hostSession,
-                            onStartWatching = { navController.navigate(PushedRoute.wtSession(hostSession.roomKey)) },
+                            onStartWatching = {
+                                // Pop WT_CREATE off the back stack instead of
+                                // leaving it underneath - without this, Back
+                                // from the Player screen landed right back on
+                                // WT_CREATE, whose remember(resolvedItem.id) {
+                                // WatchTogetherSession.host(...) } block fired
+                                // again and minted a brand-new room/port
+                                // instead of reusing the live one. Confirmed
+                                // on a real device: a fresh "room created"
+                                // log line every time Back was pressed from
+                                // Player.
+                                navController.navigate(PushedRoute.wtSession(hostSession.roomKey)) {
+                                    popUpTo(PushedRoute.WT_CREATE) { inclusive = true }
+                                }
+                            },
                         )
                     }
                 }
@@ -1042,6 +1077,7 @@ private fun MofyApp(
                             contentPadding = contentPadding,
                             mediaUri = activeLink?.movieUri ?: "",
                             itemTitle = activeItem?.title ?: "",
+                            initialPositionMs = sessionUiState.positionMs,
                             createSession = { realPlayer ->
                                 // Lobby sessions are created with a headless FakePlayerController
                                 // (no media chosen yet). Used to end the session and create a

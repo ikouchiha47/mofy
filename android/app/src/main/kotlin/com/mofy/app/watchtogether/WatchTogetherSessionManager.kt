@@ -91,6 +91,15 @@ object WatchTogetherSessionManager {
     fun itemFor(roomKey: String): LibraryItem? =
         _sessions.value.firstOrNull { it.session.roomKey == roomKey }?.item
 
+    /**
+     * An existing HOST session for this library item on this device, if
+     * any. Prevents two concurrent rooms hosting the same item, which
+     * would otherwise mean two independent sessions each periodically
+     * writing progress to the same LibraryItem row.
+     */
+    fun hostSessionFor(itemId: String): WatchTogetherSession? =
+        _sessions.value.firstOrNull { it.item?.id == itemId && it.session.role == Role.HOST }?.session
+
     /** Adds a new session, or replaces the entry for the same roomKey in place (session recreated with a real player). */
     fun add(session: WatchTogetherSession, item: LibraryItem?) {
         val existing = _sessions.value

@@ -41,7 +41,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.mofy.app.playback.VlcPlayerController
 import com.mofy.app.ui.icons.AppIcons
 import com.mofy.app.watchtogether.WatchTogetherSession
@@ -131,6 +134,7 @@ fun SoloPlayerScreen(
     mediaUri: String,
     subtitleUri: String? = null,
     subtitle2Uri: String? = null,
+    initialPositionMs: Long = 0L,
     createSession: ((com.mofy.app.playback.PlayerController) -> WatchTogetherSession)? = null,
     onBack: () -> Unit,
     onInvite: (() -> Unit)? = null,
@@ -147,7 +151,16 @@ fun SoloPlayerScreen(
     var currentSubtitleTrack by remember { mutableStateOf<Int?>(null) }
 
     DisposableEffect(mediaUri, subtitleUri, subtitle2Uri) {
-        val newPlayer = VlcPlayerController(context, mediaUri, subtitleUri, subtitle2Uri)
+        // mediaUri starts as "" before the DB-backed link flow resolves,
+        // then changes to the real URI moments later - firing this effect
+        // twice per real entry (blank, then real). Each firing constructed
+        // a throwaway VlcPlayerController + Surface that got torn down
+        // almost immediately, which is what produced the "video output
+        // creation failed" flood and the flash-of-black/restart-from-0 on
+        // every entry. Skip construction entirely until there's a real URI.
+        if (mediaUri.isBlank()) return@DisposableEffect onDispose {}
+
+        val newPlayer = VlcPlayerController(context, mediaUri, subtitleUri, subtitle2Uri, initialPositionMs)
         newPlayer.attachViews(videoLayout)
         val newSession = createSession?.invoke(newPlayer)
         if (newSession == null) newPlayer.play()
@@ -177,6 +190,29 @@ fun SoloPlayerScreen(
         return
     }
     val currentSession = session
+
+    // The window's Surface (and the SurfaceView inside videoLayout) gets
+    // destroyed and recreated by the OS on any visibility loss - not just
+    // backgrounding, but the screen simply timing out and turning off from
+    // inactivity (confirmed via PowerManagerService/DreamManagerService
+    // logs: "Going to sleep due to timeout" / "Waking up ... WAKE_REASON_
+    // TAP"). VLC's video output stays bound to the old, now-dead Surface
+    // unless told to rebind, producing a continuous "video output creation
+    // failed" flood - audio keeps playing (different pipeline) while video
+    // stays blank. Detach before the Surface dies, reattach once a fresh
+    // one exists.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, currentPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> currentPlayer.detachViews()
+                Lifecycle.Event.ON_RESUME -> currentPlayer.attachViews(videoLayout)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     var uiPositionMs by remember { mutableStateOf(0L) }
     var uiIsPlaying by remember { mutableStateOf(false) }

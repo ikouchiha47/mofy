@@ -8,6 +8,9 @@ and ADRs 0006 / 0011.
   control-plane behavior, written from **both** host and guest.
 - **Redesign doc** still owns screen entry points, Leave vs Back vs Cancel,
   listing hub, session cap, demote-to-solo, and the code audit.
+- **State / UX ownership** (room clock vs bookmark, global vs local,
+  who saves on Back/Leave) lives in
+  `docs/tasks/watch-together-state-and-ux.md`.
 - Where they conflict on *screens and teardown*, redesign wins.
 - Where they conflict on *sync/clock/network*, this file wins once the
   Open decisions at the bottom are locked.

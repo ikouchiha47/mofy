@@ -133,9 +133,22 @@ function sendControl(msg) {
   }
 }
 
+function buildWsUrl() {
+  // Server only routes /wt/{roomKey} (EmbeddedSignalingServer.kt). This
+  // field gets pasted in different shapes depending on what the user
+  // copied from the phone's Room screen - the base "ws://host:port", the
+  // base with "/wt", or the full "ws://host:port/wt/ROOMKEY" connect URL -
+  // normalize all three instead of silently connecting to the wrong path.
+  let base = $("wsUrl").value.trim().replace(/\/+$/, "");
+  const roomKey = $("roomKey").value.trim().toUpperCase();
+  if (base.toUpperCase().endsWith("/" + roomKey)) return base;
+  if (!/\/wt$/i.test(base)) base += "/wt";
+  return base + "/" + roomKey;
+}
+
 async function join() {
   myPeerId = guestPeerId();
-  const url = $("wsUrl").value.replace(/\/$/, "") + "/" + $("roomKey").value.trim().toUpperCase();
+  const url = buildWsUrl();
   setBadge($("wsState"), "WS: connecting...");
   ws = new WebSocket(url);
 
@@ -148,8 +161,8 @@ async function join() {
     sendSignal(HOST_PEER_ID, { kind: "join-rtc" });
   };
 
-  ws.onclose = () => setBadge($("wsState"), "WS: closed", "bad");
-  ws.onerror = () => setBadge($("wsState"), "WS: error", "bad");
+  ws.onclose = () => { setBadge($("wsState"), "WS: closed", "bad"); resetForRetry(); };
+  ws.onerror = () => { setBadge($("wsState"), "WS: error", "bad"); resetForRetry(); };
 
   ws.onmessage = async (ev) => {
     const frame = JSON.parse(ev.data);
@@ -296,18 +309,30 @@ video.addEventListener("seeked", () => {
 $("playBtn").addEventListener("click", () => video.play());
 $("pauseBtn").addEventListener("click", () => video.pause());
 
-$("joinBtn").addEventListener("click", join);
-$("leaveBtn").addEventListener("click", () => {
-  if (dc) dc.close();
-  if (pc) pc.close();
-  if (ws) ws.close();
+// Shared by the Leave button and by onclose/onerror - a failed/dropped
+// connection must return the UI to a re-joinable state, not leave "Join
+// as guest" disabled forever with no way back in.
+function resetForRetry() {
+  if (dc) { try { dc.close(); } catch (_) {} dc = null; }
+  if (pc) { try { pc.close(); } catch (_) {} pc = null; }
+  ws = null;
   $("joinBtn").disabled = false;
   $("leaveBtn").disabled = true;
   $("playBtn").disabled = true;
   $("pauseBtn").disabled = true;
-  setBadge($("wsState"), "WS: idle");
   setBadge($("iceState"), "ICE: idle");
   setBadge($("dcState"), "Data channel: idle");
+}
+
+$("joinBtn").addEventListener("click", join);
+$("leaveBtn").addEventListener("click", () => {
+  if (ws) {
+    ws.onclose = null; // avoid onclose's resetForRetry firing after ours below
+    ws.onerror = null;
+    ws.close();
+  }
+  resetForRetry();
+  setBadge($("wsState"), "WS: idle");
 });
 </script>
 </body>

@@ -33,7 +33,6 @@ class WatchTogetherSession private constructor(
     private val transport: WtTransport,
     private val signaling: SignalingChannel?,
     private val embeddedServer: EmbeddedSignalingServer?,
-    private val player: PlayerController,
     private val localParticipant: Participant,
 ) {
     sealed interface WtEvent {
@@ -103,14 +102,24 @@ class WatchTogetherSession private constructor(
         _state.value = snapshot()
     }
 
+    // Position/isPlaying come from the engine, not a locally-held player
+    // reference - SyncEngine is the single owner of "what's the current
+    // player" (it swaps its own internal reference on rebindPlayer() and
+    // falls back to tracked state when the player is unbound/released, see
+    // SyncEngine.currentPositionMs()). WatchTogetherSession used to hold a
+    // second, independent player reference here that never got updated on
+    // rebind - every LiveSessionBar "paused · X:XX" label and resume-on-
+    // reentry read that stale copy (always position 0) forever, regardless
+    // of what the engine/real player actually tracked. Read through the
+    // engine instead of duplicating the state.
     private fun snapshot(): SessionState = SessionState(
         roomKey = roomKey,
         itemHash = itemHash,
         role = role,
         localParticipantId = engine.localParticipantId(),
         participants = engine.participants(),
-        positionMs = player.positionMs,
-        isPlaying = player.isPlaying,
+        positionMs = engine.currentPositionMs(),
+        isPlaying = engine.currentIsPlaying(),
     )
 
     companion object {
@@ -266,7 +275,6 @@ class WatchTogetherSession private constructor(
                 transport = transport,
                 signaling = signaling,
                 embeddedServer = embeddedServer,
-                player = player,
                 localParticipant = localParticipant,
             )
             engine.start()

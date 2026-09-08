@@ -20,16 +20,36 @@ class SyncEngineTest {
     private val itemHash = "abc123def4567890"
 
     @Test
-    fun `1 host local seek emits one seek and player at position`() {
+    fun `1 host local seek emits one seek at position after debounce flush`() {
         val player = FakePlayerController()
         val transport = FakeWtTransport()
-        val host = hostEngine(player, transport)
+        var nowMs = 1_000_000L
+        val host = SyncEngine(
+            role = Role.HOST,
+            roomKey = roomKey,
+            itemHash = itemHash,
+            localParticipant = Participant("host-1", "Alex", Role.HOST),
+            player = player,
+            transport = transport,
+            clock = { nowMs },
+        )
         host.start()
         transport.connectPeer("g1")
 
         host.localSeek(12_345)
 
+        // Player updates immediately (local responsiveness); the network
+        // emit is debounced - a single seek is scrub-end, but it still
+        // flushes on tick(), same code path as a burst (flows doc §4.1).
         assertEquals(12_345, player.positionMs)
+        assertTrue(
+            transport.sent.map { WtMessageCodec.decode(it.json) }.filterIsInstance<WtMessage.Seek>().isEmpty(),
+            "must not emit before the debounce window flushes",
+        )
+
+        nowMs += SyncEngineConfig.CONTROL_DEBOUNCE_MS
+        host.tick()
+
         val seeks = transport.sent.map { WtMessageCodec.decode(it.json) }.filterIsInstance<WtMessage.Seek>()
         assertEquals(1, seeks.size)
         assertEquals(12_345, seeks.single().positionMs)

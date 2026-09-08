@@ -170,7 +170,17 @@ class EmbeddedSignalingServer(
                     ?.hostAddress
                 address?.let { iface.name to it }
             }
-            return candidates.firstOrNull { (name, _) -> name.startsWith("wlan") }?.second
+            // ZeroTier's interface (tun0 on this device, confirmed via
+            // `ip addr` - zt* on some builds) first: when host and guest
+            // aren't actually on the same physical LAN and are only
+            // reachable over ZeroTier, advertising the wlan address here
+            // produces an invite guests can never connect to (confirmed on
+            // a real device: 100% packet loss / ARP "Host is down" to the
+            // wlan address, while the ZeroTier address worked immediately).
+            // wlan (Android) / wlp*, wlx* (modern Linux predictable network
+            // interface names, e.g. wlp2s0) next, then anything else.
+            return candidates.firstOrNull { (name, _) -> name.startsWith("tun") || name.startsWith("zt") }?.second
+                ?: candidates.firstOrNull { (name, _) -> name.startsWith("wlan") || name.startsWith("wlp") || name.startsWith("wlx") }?.second
                 ?: candidates.firstOrNull()?.second
         }
     }

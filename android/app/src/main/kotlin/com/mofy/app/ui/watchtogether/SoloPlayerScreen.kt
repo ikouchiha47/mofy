@@ -262,6 +262,15 @@ fun SoloPlayerScreen(
         }
     }
 
+    // Mirrors VLC-Android's own VideoPlayerActivity: keepScreenOn is toggled
+    // with play/pause state on the video surface itself
+    // (mSurfaceView.setKeepScreenOn(true) on play, false on pause/stop), not
+    // held for the whole time the screen is open - so the screen still times
+    // out normally while paused instead of staying lit for no reason.
+    LaunchedEffect(uiIsPlaying) {
+        videoLayout.keepScreenOn = uiIsPlaying
+    }
+
     // Solo playback (and a Watch Together session demoted to solo, see
     // WtEvent.HostLost below) never persisted progress at all before this -
     // Home's "Continue Watching" always came up empty. Separate, much

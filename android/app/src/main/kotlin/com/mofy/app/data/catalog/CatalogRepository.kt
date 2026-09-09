@@ -32,11 +32,18 @@ class CatalogRepository(
     fun pagedItems(
         query: String? = null,
         titleType: String? = null,
-        genre: String? = null,
+        genres: Set<String> = emptySet(),
+        decades: Set<Int> = emptySet(),
+        runtimeBucket: RuntimeBucket? = null,
+        minRating: RatingThreshold? = null,
         sort: CatalogSort = CatalogSort.MOST_VOTED,
     ): Flow<PagingData<CatalogItem>> = Pager(
         config = PagingConfig(pageSize = PAGE_SIZE, initialLoadSize = PAGE_SIZE, prefetchDistance = PAGE_SIZE),
-        pagingSourceFactory = { CatalogPagingSource(db, query?.takeIf { it.isNotBlank() }, titleType, genre, sort) },
+        pagingSourceFactory = {
+            CatalogPagingSource(
+                db, query?.takeIf { it.isNotBlank() }, titleType, genres, decades, runtimeBucket, minRating, sort,
+            )
+        },
     ).flow
 
     /**
@@ -130,6 +137,15 @@ class CatalogRepository(
         db.rawQuery(
             "SELECT tconst, title, titleType, startYear, genres, averageRating, numVotes, overview, runtimeMinutes " +
                 "FROM catalog_items WHERE startYear >= 2022 AND numVotes >= 5000 " +
+                "ORDER BY startYear DESC, numVotes DESC LIMIT ?",
+            arrayOf(limit.toString()),
+        ).use { it.toCatalogItems() }.enrichPosters()
+    }
+
+    suspend fun vintagePicks(limit: Int = 20): List<CatalogItem> = withContext(Dispatchers.IO) {
+        db.rawQuery(
+            "SELECT tconst, title, titleType, startYear, genres, averageRating, numVotes, overview, runtimeMinutes " +
+                "FROM catalog_items WHERE startYear BETWEEN 1950 AND 1980 " +
                 "ORDER BY startYear DESC, numVotes DESC LIMIT ?",
             arrayOf(limit.toString()),
         ).use { it.toCatalogItems() }.enrichPosters()

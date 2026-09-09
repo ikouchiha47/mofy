@@ -194,6 +194,12 @@ dependencies {
     // stream-webrtc-android 1.3.10 is current stable 1.x on Maven Central.
     implementation("io.getstream:stream-webrtc-android:1.3.10")
 
+    // YouTube stream resolution for the solo/Watch Together player (older
+    // titles not in the local library): pure Java/Kotlin, no Python runtime
+    // needed unlike yt-dlp, actively maintained against YouTube's changes -
+    // this is the engine behind the NewPipe app.
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+
     // Watch Together Stage C: QR encoding of the room deep link.
     implementation("com.google.zxing:core:3.5.3")
 

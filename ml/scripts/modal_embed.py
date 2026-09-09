@@ -2,8 +2,15 @@
 
 Usage (from ml/):
   uv run modal run scripts/modal_embed.py
+  uv run modal run scripts/modal_embed.py --key-range startYear:1950-1980 --out data/catalog_vec_vintage.db
 
-Uploads catalog.db, runs embedding on an L4, downloads catalog_vec.db.
+Uploads catalog.db, runs embedding on an L4, downloads a fresh catalog_vec.db
+(or a --key-range-filtered slice of it, written to a distinct --out path).
+Merging a filtered slice into the main catalog_vec.db is a separate, manual
+step - this script never touches an existing vector db, it only ever writes
+one from scratch at --out (hence out_path.exists() below refusing to run:
+silently overwriting the real catalog_vec.db with a partial/filtered rebuild
+would lose every vector not in this run's slice, with no warning).
 """
 
 import modal
@@ -41,7 +48,7 @@ QUERY_TEMPLATE = "task: search result | query: {text}"
 
 
 @app.function(gpu="T4", timeout=1800)
-def embed(catalog_bytes: bytes, hf_token: str) -> bytes:
+def embed(catalog_bytes: bytes, hf_token: str, key_range: str = "") -> bytes:
     import json
     import os
     import sqlite3
@@ -69,13 +76,22 @@ def embed(catalog_bytes: bytes, hf_token: str) -> bytes:
             f.write(catalog_bytes)
 
         con = open_db(cat_path)
-        rows = con.execute("""
+        query = """
             SELECT ci.tconst, ci.title, ci.startYear, ci.genres, ci.overview,
                    COALESCE(cp.plots, '[]') AS plots_json
             FROM catalog_items ci
             LEFT JOIN catalog_plots cp ON cp.tconst = ci.tconst
-            ORDER BY ci.numVotes DESC
-        """).fetchall()
+        """
+        params: tuple = ()
+        if key_range:
+            # "field:min-max", e.g. "startYear:1950-1980" - only startYear is
+            # meaningful right now (the one column ranges make sense on).
+            field, bounds = key_range.split(":", 1)
+            lo, hi = bounds.split("-", 1)
+            query += f" WHERE ci.{field} BETWEEN ? AND ?"
+            params = (lo, hi)
+        query += " ORDER BY ci.numVotes DESC"
+        rows = con.execute(query, params).fetchall()
 
         docs = []
         for tconst, title, year, genres, overview, plots_json in rows:
@@ -133,13 +149,15 @@ def embed(catalog_bytes: bytes, hf_token: str) -> bytes:
 
 
 @app.local_entrypoint()
-def main(out: str = str(VEC_DB)):
+def main(out: str = str(VEC_DB), key_range: str = ""):
     out_path = Path(out)
     if out_path.exists():
         raise SystemExit(f"ERROR: {out_path} already exists. Pass a different --out path.")
     catalog_bytes = CATALOG_DB.read_bytes()
     print(f"Uploading catalog.db ({len(catalog_bytes)/1e6:.0f}MB)...")
-    vec_bytes = embed.remote(catalog_bytes, _read_hf_token())
+    if key_range:
+        print(f"Filtering to key-range: {key_range}")
+    vec_bytes = embed.remote(catalog_bytes, _read_hf_token(), key_range)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(vec_bytes)
     print(f"Done. {out_path} written ({len(vec_bytes)/1e6:.0f}MB)")

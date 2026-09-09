@@ -137,6 +137,13 @@ fun SoloPlayerScreen(
     subtitleUri: String? = null,
     subtitle2Uri: String? = null,
     initialPositionMs: Long = 0L,
+    // Set when mediaUri came from YoutubeStreamResolver - shown next to the
+    // aspect-ratio control so it's visible what quality actually got picked,
+    // not just assumed to be "best". Null (no label) for local files.
+    streamResolution: String? = null,
+    // Set alongside streamResolution when mediaUri is a video-only DASH
+    // stream - attached to VlcPlayerController as an audio slave.
+    audioSlaveUri: String? = null,
     createSession: ((com.mofy.app.playback.PlayerController) -> WatchTogetherSession)? = null,
     onBack: () -> Unit,
     onInvite: (() -> Unit)? = null,
@@ -154,7 +161,7 @@ fun SoloPlayerScreen(
     var peopleMenuOpen by remember { mutableStateOf(false) }
     var currentSubtitleTrack by remember { mutableStateOf<Int?>(null) }
 
-    DisposableEffect(mediaUri, subtitleUri, subtitle2Uri) {
+    DisposableEffect(mediaUri, subtitleUri, subtitle2Uri, audioSlaveUri) {
         // mediaUri starts as "" before the DB-backed link flow resolves,
         // then changes to the real URI moments later - firing this effect
         // twice per real entry (blank, then real). Each firing constructed
@@ -164,7 +171,7 @@ fun SoloPlayerScreen(
         // every entry. Skip construction entirely until there's a real URI.
         if (mediaUri.isBlank()) return@DisposableEffect onDispose {}
 
-        val newPlayer = VlcPlayerController(context, mediaUri, subtitleUri, subtitle2Uri, initialPositionMs)
+        val newPlayer = VlcPlayerController(context, mediaUri, subtitleUri, subtitle2Uri, initialPositionMs, audioSlaveUri)
         newPlayer.attachViews(videoLayout)
         val newSession = createSession?.invoke(newPlayer)
         if (newSession == null) newPlayer.play()
@@ -438,6 +445,18 @@ fun SoloPlayerScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text("⤢", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            }
+            if (streamResolution != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(MaterialTheme.shapes.small)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(streamResolution, color = Color.White, style = MaterialTheme.typography.labelSmall)
+                }
             }
             Spacer(modifier = Modifier.width(8.dp))
             Box {

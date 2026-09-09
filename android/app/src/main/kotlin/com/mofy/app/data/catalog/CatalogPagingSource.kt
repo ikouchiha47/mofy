@@ -24,7 +24,10 @@ class CatalogPagingSource(
     private val db: SQLiteDatabase,
     private val query: String?,
     private val titleType: String?,
-    private val genre: String?,
+    private val genres: Set<String> = emptySet(),
+    private val decades: Set<Int> = emptySet(),
+    private val runtimeBucket: RuntimeBucket? = null,
+    private val minRating: RatingThreshold? = null,
     private val sort: CatalogSort,
 ) : PagingSource<CatalogCursor, CatalogItem>() {
 
@@ -49,9 +52,32 @@ class CatalogPagingSource(
                     conditions += "ci.titleType = ?"
                     args += titleType
                 }
-                if (genre != null) {
-                    conditions += "ci.genres LIKE ?"
-                    args += "%$genre%"
+                if (genres.isNotEmpty()) {
+                    // OR'd within the group (any selected genre matches), the
+                    // group itself AND'd with every other filter category.
+                    conditions += "(" + genres.joinToString(" OR ") { "ci.genres LIKE ?" } + ")"
+                    args += genres.map { "%$it%" }
+                }
+                if (decades.isNotEmpty()) {
+                    conditions += "(" + decades.joinToString(" OR ") { "ci.startYear BETWEEN ? AND ?" } + ")"
+                    decades.forEach { decade ->
+                        args += decade.toString()
+                        args += (decade + 9).toString()
+                    }
+                }
+                if (runtimeBucket != null) {
+                    if (runtimeBucket.minMinutes != null) {
+                        conditions += "ci.runtimeMinutes >= ?"
+                        args += runtimeBucket.minMinutes.toString()
+                    }
+                    if (runtimeBucket.maxMinutes != null) {
+                        conditions += "ci.runtimeMinutes <= ?"
+                        args += runtimeBucket.maxMinutes.toString()
+                    }
+                }
+                if (minRating != null) {
+                    conditions += "ci.averageRating >= ?"
+                    args += minRating.min.toString()
                 }
                 val cursor = params.key
                 if (cursor != null) {

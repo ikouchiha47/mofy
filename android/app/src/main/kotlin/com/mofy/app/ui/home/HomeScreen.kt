@@ -50,7 +50,7 @@ private val HOME_GENRES = listOf("Action", "Drama", "Comedy", "Thriller", "Sci-F
 private const val HOME_ROW_SIZE = 6
 
 /** Which Home row's "More" was tapped - the caller maps this to a Discover deep link. */
-enum class DiscoverSection { ALL_TIME_CLASSICS, NEW_RELEASES, UPCOMING_MOVIES, UPCOMING_TV }
+enum class DiscoverSection { ALL_TIME_CLASSICS, NEW_RELEASES, UPCOMING_MOVIES, UPCOMING_TV, VINTAGE_PICKS }
 
 @Composable
 fun HomeScreen(
@@ -152,11 +152,7 @@ fun HomeScreen(
 
         if (vintagePicks.isNotEmpty()) {
             item {
-                // No "More" link yet - Discover has no year-range filter to
-                // deep-link into (unlike All Time Classics/New Releases's
-                // sort params), so this follows the genre rows' no-More
-                // precedent below until that filter exists.
-                SectionHeader("Vintage Picks")
+                SectionHeader("Vintage Picks", onMore = { onMoreClick(DiscoverSection.VINTAGE_PICKS) })
                 CatalogRow(vintagePicks, onCatalogItemClick)
             }
         }

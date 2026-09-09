@@ -62,7 +62,7 @@ def main() -> None:
         con.execute(
             """INSERT OR REPLACE INTO catalog_items
                (tconst, title, titleType, startYear, runtimeMinutes, genres, averageRating, numVotes, overview)
-               VALUES (?, 'movie', ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, 'movie', ?, ?, ?, ?, ?, ?)""",
             (
                 t["tconst"],
                 t["primaryTitle"],

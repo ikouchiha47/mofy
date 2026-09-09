@@ -20,6 +20,11 @@ data class LibraryLink(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val libraryItemKey: String,
     val label: String?,
+    // A YouTube-sourced link is "youtube:<videoId>?res=<resolution>" (e.g.
+    // "youtube:dQw4w9WgXcQ?res=1080p60") - encoded here rather than a
+    // separate column so it flows unmodified through every existing path
+    // that already carries movieUri end-to-end (the shared TMDB-confirm
+    // import route included) with no new channel needed.
     val movieUri: String,
     val subtitleUri: String?,
     val subtitle2Uri: String?,

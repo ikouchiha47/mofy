@@ -596,6 +596,13 @@ private fun MofyApp(
                         // screen afterward if needed.
                         goToImportConfirm(com.mofy.app.data.library.guessTitleFromUri(context, movie), movie)
                     },
+                    onSaveYoutubeLink = { videoId, resolution, title, _ ->
+                        // Same TMDB-confirm path as a file import - title is
+                        // only a search seed, movieUri is stored verbatim at
+                        // the end regardless of scheme (see ConfirmMatchScreen
+                        // route below), so this needs no changes there.
+                        goToImportConfirm(title, android.net.Uri.parse("youtube:$videoId?res=$resolution"))
+                    },
                 )
             }
             composable(TopLevelDestination.SETTINGS.route) {
@@ -852,15 +859,25 @@ private fun MofyApp(
                 // before soloItem resolves, capturing initialPositionMs=0
                 // and never retrying (same class of race as the mediaUri
                 // blank-then-real one already fixed there).
+                val youtubeState = com.mofy.app.playback.youtube.rememberYoutubeResolvedMedia(movieUri)
                 if (soloLibraryItemId != null && soloItem == null) {
                     PlaceholderScreen(contentPadding = contentPadding, note = "Loading…")
+                } else if (youtubeState == com.mofy.app.playback.youtube.YoutubeMediaState.Loading) {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "Loading YouTube stream…")
+                } else if (youtubeState is com.mofy.app.playback.youtube.YoutubeMediaState.Error) {
+                    PlaceholderScreen(contentPadding = contentPadding, note = "Couldn't load this video: ${youtubeState.message}")
                 } else {
+                    val resolvedUri = (youtubeState as? com.mofy.app.playback.youtube.YoutubeMediaState.Ready)?.streamUrl ?: movieUri
+                    val resolvedAudioSlave = (youtubeState as? com.mofy.app.playback.youtube.YoutubeMediaState.Ready)?.audioStreamUrl
+                    val resolvedResolution = (youtubeState as? com.mofy.app.playback.youtube.YoutubeMediaState.Ready)?.resolution
                     com.mofy.app.ui.watchtogether.SoloPlayerScreen(
                         contentPadding = contentPadding,
-                        mediaUri = movieUri,
+                        mediaUri = resolvedUri,
                         subtitleUri = decode("subtitleUri"),
                         subtitle2Uri = decode("subtitle2Uri"),
                         initialPositionMs = soloItem?.lastPositionMs ?: 0L,
+                        streamResolution = resolvedResolution,
+                        audioSlaveUri = resolvedAudioSlave,
                         onBack = { navController.popBackStack() },
                         onProgress = { positionMs, durationMs ->
                             if (soloLibraryItemId != null) {
@@ -906,6 +923,26 @@ private fun MofyApp(
                                     movieUri = movie.toString(),
                                     subtitleUri = subtitle?.toString(),
                                     subtitle2Uri = subtitle2?.toString(),
+                                    isActive = false,
+                                    linkedAtEpochMillis = System.currentTimeMillis(),
+                                ),
+                            )
+                            navController.popBackStack()
+                        }
+                    },
+                    onSaveYoutubeLink = { videoId, resolution, _, _ ->
+                        // Attaching a link to an existing item never touches
+                        // LibraryItem's own title/poster (see onSaveSingleFile
+                        // above - same as a local-file link) - IMDb/TMDB-
+                        // sourced metadata on this item is untouched.
+                        coroutineScope.launch {
+                            database.libraryDao().addAndActivateLink(
+                                com.mofy.app.data.library.LibraryLink(
+                                    libraryItemKey = linkItemId,
+                                    label = null,
+                                    movieUri = "youtube:$videoId?res=$resolution",
+                                    subtitleUri = null,
+                                    subtitle2Uri = null,
                                     isActive = false,
                                     linkedAtEpochMillis = System.currentTimeMillis(),
                                 ),
@@ -1073,11 +1110,27 @@ private fun MofyApp(
                     } else {
                         val activeLink by (activeItem?.let { database.libraryDao().observeActiveLink(it.id) } ?: kotlinx.coroutines.flow.emptyFlow())
                             .collectAsState(initial = null)
+                        // Each device resolves its own YouTube stream URL
+                        // independently (googlevideo.com URLs are IP-locked/
+                        // short-lived) - only movieUri (the video ID) is
+                        // shared via the room's linked item, never a resolved
+                        // stream URL.
+                        val youtubeState = com.mofy.app.playback.youtube.rememberYoutubeResolvedMedia(activeLink?.movieUri ?: "")
+                        val resolvedUri = (youtubeState as? com.mofy.app.playback.youtube.YoutubeMediaState.Ready)?.streamUrl ?: (activeLink?.movieUri ?: "")
+                        val resolvedAudioSlave = (youtubeState as? com.mofy.app.playback.youtube.YoutubeMediaState.Ready)?.audioStreamUrl
+                        val resolvedResolution = (youtubeState as? com.mofy.app.playback.youtube.YoutubeMediaState.Ready)?.resolution
+                        if (youtubeState == com.mofy.app.playback.youtube.YoutubeMediaState.Loading) {
+                            PlaceholderScreen(contentPadding = contentPadding, note = "Loading YouTube stream…")
+                        } else if (youtubeState is com.mofy.app.playback.youtube.YoutubeMediaState.Error) {
+                            PlaceholderScreen(contentPadding = contentPadding, note = "Couldn't load this video: ${youtubeState.message}")
+                        } else {
                         PlayerScreen(
                             contentPadding = contentPadding,
-                            mediaUri = activeLink?.movieUri ?: "",
+                            mediaUri = resolvedUri,
                             itemTitle = activeItem?.title ?: "",
                             initialPositionMs = sessionUiState.positionMs,
+                            streamResolution = resolvedResolution,
+                            audioSlaveUri = resolvedAudioSlave,
                             createSession = { realPlayer ->
                                 // Lobby sessions are created with a headless FakePlayerController
                                 // (no media chosen yet). Used to end the session and create a
@@ -1117,6 +1170,7 @@ private fun MofyApp(
                                 }
                             },
                         )
+                        }
                     }
                 }
             }

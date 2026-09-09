@@ -43,7 +43,7 @@ import com.mofy.app.ui.storage.requestAllFilesAccessIntent
 import java.io.File
 
 private enum class RoleTarget { MOVIE, SUBTITLE, SUBTITLE2 }
-private enum class BrowserMode { SINGLE_FILE, FOLDER }
+private enum class BrowserMode { SINGLE_FILE, FOLDER, YOUTUBE }
 
 /**
  * Points Mofy at a file the user already downloaded elsewhere - never
@@ -69,6 +69,9 @@ fun LinkScreen(
     onSetActive: ((Long) -> Unit)? = null,
     onSaveSingleFile: (Uri) -> Unit,
     onSaveFolderLink: (movie: Uri, subtitle: Uri?, subtitle2: Uri?) -> Unit,
+    // Null hides the "Link from YouTube" option entirely - not every
+    // LinkScreen call site is ready to handle it yet.
+    onSaveYoutubeLink: ((videoId: String, resolution: String, title: String, thumbnailUrl: String?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var folderFiles by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -93,7 +96,21 @@ fun LinkScreen(
         }
     }
 
-    if (browserMode != null) {
+    if (browserMode == BrowserMode.YOUTUBE) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { browserMode = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            com.mofy.app.ui.link.YoutubeLinkPicker(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                onPicked = { videoId, resolution, title, thumbnailUrl ->
+                    browserMode = null
+                    onSaveYoutubeLink?.invoke(videoId, resolution, title, thumbnailUrl)
+                },
+                onCancel = { browserMode = null },
+            )
+        }
+    } else if (browserMode != null) {
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { browserMode = null },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
@@ -107,7 +124,7 @@ fun LinkScreen(
                             folderFiles = file.listFiles()?.filter { it.isFile }?.sortedBy { it.name.lowercase() }.orEmpty()
                             folderPicked = true
                         }
-                        null -> Unit
+                        BrowserMode.YOUTUBE, null -> Unit
                     }
                     browserMode = null
                 },
@@ -139,6 +156,9 @@ fun LinkScreen(
             )
             PickRow(label = "Pick a single video file") { openBrowser(BrowserMode.SINGLE_FILE) }
             PickRow(label = "Pick a folder", sub = "choose files inside next") { openBrowser(BrowserMode.FOLDER) }
+            if (onSaveYoutubeLink != null) {
+                PickRow(label = "Link from YouTube", sub = "search, pick a resolution") { browserMode = BrowserMode.YOUTUBE }
+            }
         } else {
             Text("Folder contents", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
             LazyColumn(modifier = Modifier.weight(1f)) {

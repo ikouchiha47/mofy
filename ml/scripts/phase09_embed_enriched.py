@@ -128,13 +128,22 @@ def main() -> None:
     print(f"\nTitles to embed: {len(docs)} (skipped {len(rows) - len(docs)} with no text)")
 
     # 5. embed
-    device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
+    # This Mac's GPU is integrated (unified memory) - MPS and CPU draw from
+    # the exact same physical RAM pool, so switching devices was never the
+    # fix for the batch_size=256 OOM (CPU got SIGKILL'd at the same batch
+    # size too). The actual fix is the smaller batch_size below; MPS is
+    # faster than CPU for the same memory budget on Apple Silicon.
+    torch = __import__("torch")
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Embedding device: {device}")
     model = SentenceTransformer(MODEL_NAME, device=device, truncate_dim=DIM)
     vectors = model.encode(
         [d[2] for d in docs],
         normalize_embeddings=True,
-        batch_size=256,
+        # 256 got SIGKILL'd by the OS on CPU (float32 activations for a
+        # 300M-param model at that batch size exhausted available RAM) and
+        # separately OOM'd on MPS - lowered to fit this machine's memory.
+        batch_size=32,
         show_progress_bar=True,
     )
 

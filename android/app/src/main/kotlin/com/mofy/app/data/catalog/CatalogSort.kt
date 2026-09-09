@@ -20,3 +20,20 @@ val IMDB_GENRES = listOf(
     "Horror", "Music", "Musical", "Mystery", "News", "Reality-TV",
     "Romance", "Sci-Fi", "Short", "Sport", "Talk-Show", "Thriller", "War", "Western",
 )
+
+/** Decade-start years offered in the filter sheet's Decades section, newest first. */
+val CATALOG_DECADES = listOf(2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950)
+
+/** Runtime buckets for the Discover filter sheet's Runtime section - single-select. */
+enum class RuntimeBucket(val label: String, val minMinutes: Int?, val maxMinutes: Int?) {
+    SHORT("Under 90 min", null, 89),
+    STANDARD("90-120 min", 90, 120),
+    LONG("Over 120 min", 121, null),
+}
+
+/** Minimum-rating thresholds for the Discover filter sheet's Rating section - single-select. */
+enum class RatingThreshold(val label: String, val min: Double) {
+    SEVEN_PLUS("7.0+", 7.0),
+    EIGHT_PLUS("8.0+", 8.0),
+    NINE_PLUS("9.0+", 9.0),
+}

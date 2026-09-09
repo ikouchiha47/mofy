@@ -28,6 +28,10 @@ class VlcPlayerController(
     subtitleUri: String? = null,
     subtitle2Uri: String? = null,
     startPositionMs: Long = 0L,
+    // Set when mediaUri is a video-only stream (e.g. a resolved YouTube DASH
+    // stream via YoutubeStreamResolver) that needs its audio muxed back in -
+    // libVLC plays the two as one session via a Slave, no manifest needed.
+    audioSlaveUri: String? = null,
 ) : PlayerController {
 
     private val libVlc: LibVLC = LibVLC(context.applicationContext)
@@ -62,6 +66,10 @@ class VlcPlayerController(
         // libVLC's preferred default track over the second one.
         subtitleUri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 2, Uri.parse(it).toString())) }
         subtitle2Uri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 1, Uri.parse(it).toString())) }
+        // Video-only DASH stream (e.g. from YoutubeStreamResolver) needs its
+        // audio muxed back in - same slave mechanism as subtitles above, just
+        // Audio instead of Subtitle. No DASH manifest needed.
+        audioSlaveUri?.let { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Audio, 1, it)) }
         // Resume position is set as a media option, applied natively by
         // libVLC as playback starts - not via a seekTo() call after the
         // fact. A setTime() call issued before the native player has

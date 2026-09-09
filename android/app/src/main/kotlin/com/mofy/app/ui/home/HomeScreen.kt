@@ -47,6 +47,7 @@ import java.time.Instant
 import java.time.ZoneId
 
 private val HOME_GENRES = listOf("Action", "Drama", "Comedy", "Thriller", "Sci-Fi", "Horror")
+private const val HOME_ROW_SIZE = 6
 
 /** Which Home row's "More" was tapped - the caller maps this to a Discover deep link. */
 enum class DiscoverSection { ALL_TIME_CLASSICS, NEW_RELEASES, UPCOMING_MOVIES, UPCOMING_TV }
@@ -71,6 +72,7 @@ fun HomeScreen(
 
     var popular by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var newReleases by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    var vintagePicks by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var genreSections by remember { mutableStateOf<List<Pair<String, List<CatalogItem>>>>(emptyList()) }
     // Split by kind, not one combined "recent(6)" list - a combined list
     // ordered by firstSeenEpochMillis DESC let AIRING_TODAY (synced after
@@ -81,17 +83,18 @@ fun HomeScreen(
 
     LaunchedEffect(catalogRepository, posterVersion) {
         if (catalogRepository == null) return@LaunchedEffect
-        popular = catalogRepository.popularItems(6)
-        newReleases = catalogRepository.newReleases(6)
+        popular = catalogRepository.popularItems(HOME_ROW_SIZE)
+        newReleases = catalogRepository.newReleases(HOME_ROW_SIZE)
+        vintagePicks = catalogRepository.vintagePicks(HOME_ROW_SIZE)
         genreSections = HOME_GENRES.map { genre ->
-            genre to catalogRepository.byGenre(genre, 6)
+            genre to catalogRepository.byGenre(genre, HOME_ROW_SIZE)
         }.filter { it.second.isNotEmpty() }
     }
 
     LaunchedEffect(syncedCatalogDao) {
         if (syncedCatalogDao != null) {
-            upcomingMovies = syncedCatalogDao.recentByKind("UPCOMING", 6).map { it.toHomeCatalogItem() }
-            upcomingTv = syncedCatalogDao.recentByKind("AIRING_TODAY", 6).map { it.toHomeCatalogItem() }
+            upcomingMovies = syncedCatalogDao.recentByKind("UPCOMING", HOME_ROW_SIZE).map { it.toHomeCatalogItem() }
+            upcomingTv = syncedCatalogDao.recentByKind("AIRING_TODAY", HOME_ROW_SIZE).map { it.toHomeCatalogItem() }
         }
     }
 
@@ -144,6 +147,17 @@ fun HomeScreen(
             item {
                 SectionHeader("New Releases", onMore = { onMoreClick(DiscoverSection.NEW_RELEASES) })
                 CatalogRow(newReleases, onCatalogItemClick)
+            }
+        }
+
+        if (vintagePicks.isNotEmpty()) {
+            item {
+                // No "More" link yet - Discover has no year-range filter to
+                // deep-link into (unlike All Time Classics/New Releases's
+                // sort params), so this follows the genre rows' no-More
+                // precedent below until that filter exists.
+                SectionHeader("Vintage Picks")
+                CatalogRow(vintagePicks, onCatalogItemClick)
             }
         }
 

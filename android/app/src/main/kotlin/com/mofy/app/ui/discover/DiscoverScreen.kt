@@ -2,6 +2,7 @@ package com.mofy.app.ui.discover
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -106,7 +107,10 @@ fun DiscoverScreen(
     val scope = rememberCoroutineScope()
 
     var selectedType by remember { mutableStateOf(initialType) }
-    var selectedGenre by remember { mutableStateOf<String?>(null) }
+    var selectedGenres by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedDecades by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var selectedRuntimeBucket by remember { mutableStateOf<com.mofy.app.data.catalog.RuntimeBucket?>(null) }
+    var selectedRating by remember { mutableStateOf<com.mofy.app.data.catalog.RatingThreshold?>(null) }
     var selectedSort by remember { mutableStateOf(initialSort) }
     var discoverSource by remember { mutableStateOf(initialSource) }
     var filterSheetOpen by remember { mutableStateOf(false) }
@@ -156,12 +160,18 @@ fun DiscoverScreen(
     val syncedMode = discoverSource == DiscoverSource.NEW_AND_UPCOMING &&
         syncedCatalogDao != null && !semanticMode
 
-    val pagingFlow = remember(debouncedQuery, titleTypeFilter, selectedGenre, selectedSort, catalogRepository, discoverSource, syncedCatalogDao, semanticMode) {
+    val pagingFlow = remember(
+        debouncedQuery, titleTypeFilter, selectedGenres, selectedDecades, selectedRuntimeBucket, selectedRating,
+        selectedSort, catalogRepository, discoverSource, syncedCatalogDao, semanticMode,
+    ) {
         if (syncedMode || semanticMode) emptyFlow<PagingData<CatalogItem>>()
         else catalogRepository?.pagedItems(
             query = debouncedQuery,
             titleType = titleTypeFilter,
-            genre = selectedGenre,
+            genres = selectedGenres,
+            decades = selectedDecades,
+            runtimeBucket = selectedRuntimeBucket,
+            minRating = selectedRating,
             sort = selectedSort,
         ) ?: emptyFlow<PagingData<CatalogItem>>()
     }
@@ -186,7 +196,8 @@ fun DiscoverScreen(
         }
     }
     val syncedItems: LazyPagingItems<SyncedCatalogItem> = syncedPagingFlow.collectAsLazyPagingItems()
-    val activeFilterCount = listOfNotNull(selectedGenre).size
+    val activeFilterCount = selectedGenres.size + selectedDecades.size +
+        listOfNotNull(selectedRuntimeBucket, selectedRating).size
 
     Box(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -216,7 +227,12 @@ fun DiscoverScreen(
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
 
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            ) {
                 FilterButton(count = activeFilterCount, onClick = { filterSheetOpen = true })
                 Spacer(modifier = Modifier.width(8.dp))
                 ActiveFilterChip(label = selectedSort.label, onRemove = null)
@@ -224,9 +240,21 @@ fun DiscoverScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     ActiveFilterChip(label = discoverSource.label, onRemove = { discoverSource = DiscoverSource.ALL })
                 }
-                if (selectedGenre != null) {
+                selectedGenres.forEach { g ->
                     Spacer(modifier = Modifier.width(8.dp))
-                    ActiveFilterChip(label = selectedGenre ?: "", onRemove = { selectedGenre = null })
+                    ActiveFilterChip(label = g, onRemove = { selectedGenres = selectedGenres - g })
+                }
+                selectedDecades.forEach { d ->
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ActiveFilterChip(label = "${d}s", onRemove = { selectedDecades = selectedDecades - d })
+                }
+                selectedRuntimeBucket?.let { rb ->
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ActiveFilterChip(label = rb.label, onRemove = { selectedRuntimeBucket = null })
+                }
+                selectedRating?.let { r ->
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ActiveFilterChip(label = r.label, onRemove = { selectedRating = null })
                 }
             }
 
@@ -257,23 +285,35 @@ fun DiscoverScreen(
             }
         }
 
-        var pendingGenre by remember(selectedGenre) { mutableStateOf(selectedGenre) }
+        var pendingGenres by remember(selectedGenres) { mutableStateOf(selectedGenres) }
+        var pendingDecades by remember(selectedDecades) { mutableStateOf(selectedDecades) }
+        var pendingRuntimeBucket by remember(selectedRuntimeBucket) { mutableStateOf(selectedRuntimeBucket) }
+        var pendingRating by remember(selectedRating) { mutableStateOf(selectedRating) }
         var pendingSort by remember(selectedSort) { mutableStateOf(selectedSort) }
         var pendingDiscoverSource by remember(discoverSource) { mutableStateOf(discoverSource) }
         FilterSidePanel(
             visible = filterSheetOpen,
             onDismiss = { filterSheetOpen = false },
             onClear = {
-                pendingGenre = null
+                pendingGenres = emptySet()
+                pendingDecades = emptySet()
+                pendingRuntimeBucket = null
+                pendingRating = null
                 pendingSort = CatalogSort.MOST_VOTED
                 pendingDiscoverSource = DiscoverSource.ALL
-                selectedGenre = null
+                selectedGenres = emptySet()
+                selectedDecades = emptySet()
+                selectedRuntimeBucket = null
+                selectedRating = null
                 selectedSort = CatalogSort.MOST_VOTED
                 discoverSource = DiscoverSource.ALL
                 filterSheetOpen = false
             },
             onApply = {
-                selectedGenre = pendingGenre
+                selectedGenres = pendingGenres
+                selectedDecades = pendingDecades
+                selectedRuntimeBucket = pendingRuntimeBucket
+                selectedRating = pendingRating
                 selectedSort = pendingSort
                 discoverSource = pendingDiscoverSource
                 filterSheetOpen = false
@@ -284,7 +324,8 @@ fun DiscoverScreen(
                 if (tab == 0) {
                     // Source filter (ADR 0009 task 10): synced TMDB feed
                     // tables as a distinct paging source, not a sort on the
-                    // bundled catalog - lives at the top of the Filters tab.
+                    // bundled catalog - lives at the top of the Filters tab,
+                    // outside the expandable categories since it's a single toggle.
                     item {
                         SelectableListRow(
                             label = DiscoverSource.NEW_AND_UPCOMING.label,
@@ -298,12 +339,73 @@ fun DiscoverScreen(
                             },
                         )
                     }
-                    items(IMDB_GENRES) { genreName ->
-                        SelectableListRow(
-                            label = genreName,
-                            selected = pendingGenre == genreName,
-                            onClick = { pendingGenre = if (pendingGenre == genreName) null else genreName },
-                        )
+                    item {
+                        com.mofy.app.ui.components.ExpandableFilterSection(
+                            title = "Genres",
+                            selectedCount = pendingGenres.size,
+                        ) {
+                            items(IMDB_GENRES) { genreName ->
+                                SelectableListRow(
+                                    label = genreName,
+                                    selected = genreName in pendingGenres,
+                                    onClick = {
+                                        pendingGenres = if (genreName in pendingGenres) {
+                                            pendingGenres - genreName
+                                        } else {
+                                            pendingGenres + genreName
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        com.mofy.app.ui.components.ExpandableFilterSection(
+                            title = "Decades",
+                            selectedCount = pendingDecades.size,
+                        ) {
+                            items(com.mofy.app.data.catalog.CATALOG_DECADES) { decade ->
+                                SelectableListRow(
+                                    label = "${decade}s",
+                                    selected = decade in pendingDecades,
+                                    onClick = {
+                                        pendingDecades = if (decade in pendingDecades) {
+                                            pendingDecades - decade
+                                        } else {
+                                            pendingDecades + decade
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        com.mofy.app.ui.components.ExpandableFilterSection(
+                            title = "Runtime",
+                            selectedCount = if (pendingRuntimeBucket != null) 1 else 0,
+                        ) {
+                            items(com.mofy.app.data.catalog.RuntimeBucket.entries) { bucket ->
+                                SelectableListRow(
+                                    label = bucket.label,
+                                    selected = pendingRuntimeBucket == bucket,
+                                    onClick = { pendingRuntimeBucket = if (pendingRuntimeBucket == bucket) null else bucket },
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        com.mofy.app.ui.components.ExpandableFilterSection(
+                            title = "Rating",
+                            selectedCount = if (pendingRating != null) 1 else 0,
+                        ) {
+                            items(com.mofy.app.data.catalog.RatingThreshold.entries) { threshold ->
+                                SelectableListRow(
+                                    label = threshold.label,
+                                    selected = pendingRating == threshold,
+                                    onClick = { pendingRating = if (pendingRating == threshold) null else threshold },
+                                )
+                            }
+                        }
                     }
                 } else {
                     items(CatalogSort.entries) { sort ->

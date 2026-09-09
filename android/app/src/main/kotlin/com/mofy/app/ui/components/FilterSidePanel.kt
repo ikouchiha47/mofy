@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
@@ -97,4 +98,48 @@ fun SelectableListRow(label: String, selected: Boolean, onClick: () -> Unit) {
         trailingContent = { Checkbox(checked = selected, onCheckedChange = { onClick() }) },
         modifier = Modifier.clickable(onClick = onClick),
     )
+}
+
+/**
+ * One category (Genres, Decades, Runtime, Rating, ...) in the Filters tab -
+ * collapsed by default (header + selected-count badge), expands into a
+ * fixed-height scrollable list rather than pushing the rest of the sheet
+ * down: at up to 26 entries (IMDb genres), an always-expanded flat list is
+ * what FilterSidePanel's doc comment already ruled out once for chip-wrap
+ * reasons - this is the vertical-list equivalent problem.
+ */
+@Composable
+fun ExpandableFilterSection(
+    title: String,
+    selectedCount: Int,
+    modifier: Modifier = Modifier,
+    maxHeight: androidx.compose.ui.unit.Dp = 240.dp,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier = modifier.fillMaxWidth()) {
+        ListItem(
+            headlineContent = { Text(title) },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (selectedCount > 0) {
+                        Text(
+                            selectedCount.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                    Text(if (expanded) "⌃" else "⌄", style = MaterialTheme.typography.titleMedium)
+                }
+            },
+            modifier = Modifier.clickable { expanded = !expanded },
+        )
+        if (expanded) {
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight),
+                content = content,
+            )
+        }
+    }
 }

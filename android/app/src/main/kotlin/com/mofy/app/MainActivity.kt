@@ -58,6 +58,7 @@ import com.mofy.app.ui.browse.BrowseSessionViewModel
 import com.mofy.app.ui.browse.TorrentWebViewScreen
 import com.mofy.app.ui.confirm.ConfirmMatchScreen
 import com.mofy.app.ui.detail.DetailScreen
+import com.mofy.app.ui.home.DiscoverSection
 import com.mofy.app.ui.home.HomeScreen
 import kotlinx.coroutines.launch
 import com.mofy.app.ui.library.LibraryScreen
@@ -431,14 +432,16 @@ private fun MofyApp(
                     },
                     onMoreClick = { section ->
                         val route = when (section) {
-                            com.mofy.app.ui.home.DiscoverSection.ALL_TIME_CLASSICS ->
+                            DiscoverSection.ALL_TIME_CLASSICS ->
                                 PushedRoute.discover(sort = "MOST_VOTED")
-                            com.mofy.app.ui.home.DiscoverSection.NEW_RELEASES ->
+                            DiscoverSection.NEW_RELEASES ->
                                 PushedRoute.discover(sort = "NEWEST")
-                            com.mofy.app.ui.home.DiscoverSection.UPCOMING_MOVIES ->
+                            DiscoverSection.UPCOMING_MOVIES ->
                                 PushedRoute.discover(source = "NEW_AND_UPCOMING", type = "MOVIE")
-                            com.mofy.app.ui.home.DiscoverSection.UPCOMING_TV ->
+                            DiscoverSection.UPCOMING_TV ->
                                 PushedRoute.discover(source = "NEW_AND_UPCOMING", type = "TV")
+                            DiscoverSection.VINTAGE_PICKS ->
+                                PushedRoute.discover(decades = listOf(1950, 1960, 1970))
                         }
                         navController.navigate(route)
                     },
@@ -463,6 +466,7 @@ private fun MofyApp(
                 val sourceArg = backStack.arguments?.getString("source") ?: "ALL"
                 val sortArg = backStack.arguments?.getString("sort") ?: "MOST_VOTED"
                 val typeArg = backStack.arguments?.getString("type") ?: "ANY"
+                val decadesArg = backStack.arguments?.getString("decades") ?: "none"
                 com.mofy.app.ui.discover.DiscoverScreen(
                     contentPadding = contentPadding,
                     catalogRepository = catalogRepository,
@@ -472,6 +476,7 @@ private fun MofyApp(
                     initialSource = runCatching { com.mofy.app.data.catalog.DiscoverSource.valueOf(sourceArg) }.getOrDefault(com.mofy.app.data.catalog.DiscoverSource.ALL),
                     initialSort = runCatching { com.mofy.app.data.catalog.CatalogSort.valueOf(sortArg) }.getOrDefault(com.mofy.app.data.catalog.CatalogSort.MOST_VOTED),
                     initialType = runCatching { com.mofy.app.data.tmdb.MediaType.valueOf(typeArg) }.getOrNull(),
+                    initialDecades = decadesArg.takeIf { it != "none" }?.split(",")?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet(),
                     onAdd = { catalogItem -> openCatalogItemDetail(catalogItem) },
                 )
             }

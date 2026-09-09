@@ -31,7 +31,10 @@ object PushedRoute {
     // existingItemId "none" - lets Home's "More" links open Discover
     // pre-filtered without relying on Compose Navigation's separate
     // optional-query-arg machinery.
-    const val DISCOVER = "discover/{source}/{sort}/{type}"
+    // decades: comma-joined decade-start-years ("1950,1960,1970"), sentinel
+    // "none" for no seed - lets Home's Vintage Picks "More" open Discover
+    // with its Decades filter section pre-selected.
+    const val DISCOVER = "discover/{source}/{sort}/{type}/{decades}"
     // Shared by Discover's "+" (no existing item, existingItemId "none") and
     // Detail's "Sync info" when a direct tmdbId fetch isn't possible/fails
     // (existingItemId set - the confirmed match updates that item in place
@@ -59,8 +62,8 @@ object PushedRoute {
     // watch progress back onto the right LibraryItem row.
     const val SOLO_PLAY = "solo_play/{libraryItemId}/{uri}/{subtitleUri}/{subtitle2Uri}"
 
-    fun discover(source: String = "ALL", sort: String = "MOST_VOTED", type: String = "ANY") =
-        "discover/$source/$sort/$type"
+    fun discover(source: String = "ALL", sort: String = "MOST_VOTED", type: String = "ANY", decades: List<Int> = emptyList()) =
+        "discover/$source/$sort/$type/${decades.takeIf { it.isNotEmpty() }?.joinToString(",") ?: "none"}"
     fun editSite(siteName: String) = "edit_site/$siteName"
     fun link(itemId: String) = "link/$itemId"
     fun resolveMatch(title: String, mediaType: String, existingItemId: String = "none") =

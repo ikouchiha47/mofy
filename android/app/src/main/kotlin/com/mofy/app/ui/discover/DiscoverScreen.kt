@@ -102,13 +102,14 @@ fun DiscoverScreen(
     initialSource: DiscoverSource = DiscoverSource.ALL,
     initialSort: CatalogSort = CatalogSort.MOST_VOTED,
     initialType: MediaType? = null,
+    initialDecades: Set<Int> = emptySet(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var selectedType by remember { mutableStateOf(initialType) }
     var selectedGenres by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var selectedDecades by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var selectedDecades by remember { mutableStateOf(initialDecades) }
     var selectedRuntimeBucket by remember { mutableStateOf<com.mofy.app.data.catalog.RuntimeBucket?>(null) }
     var selectedRating by remember { mutableStateOf<com.mofy.app.data.catalog.RatingThreshold?>(null) }
     var selectedSort by remember { mutableStateOf(initialSort) }
@@ -363,6 +364,10 @@ fun DiscoverScreen(
                         com.mofy.app.ui.components.ExpandableFilterSection(
                             title = "Decades",
                             selectedCount = pendingDecades.size,
+                            // Only 8 entries - tall enough to show all of them
+                            // without an internal scroll (unlike Genres' 26,
+                            // which genuinely needs the default scroll cap).
+                            maxHeight = 480.dp,
                         ) {
                             items(com.mofy.app.data.catalog.CATALOG_DECADES) { decade ->
                                 SelectableListRow(

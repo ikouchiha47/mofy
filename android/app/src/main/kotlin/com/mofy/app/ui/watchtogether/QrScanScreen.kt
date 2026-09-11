@@ -11,20 +11,17 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,13 +35,12 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
+import com.google.zxing.PlanarYUVLuminanceSource
 import com.mofy.app.ui.theme.MofyAccent
 import com.mofy.app.ui.theme.MofyBg
 import com.mofy.app.ui.theme.MofyText
 import com.mofy.app.ui.theme.MofyTextDim
+import com.mofy.app.watchtogether.QrDecoder
 import com.mofy.app.watchtogether.RoomCode
 
 /**
@@ -111,11 +107,6 @@ private fun CameraPreview(onScanned: (RoomCode.Parsed) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnScanned by rememberUpdatedState(onScanned)
     var handled by remember { mutableStateOf(false) }
-    val scanner = remember { BarcodeScanning.getClient() }
-
-    DisposableEffect(Unit) {
-        onDispose { scanner.close() }
-    }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -131,15 +122,38 @@ private fun CameraPreview(onScanned: (RoomCode.Parsed) -> Unit) {
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { imageProxy ->
-                    val mediaImage = imageProxy.image
-                    if (mediaImage == null || handled) {
+                    if (handled) {
                         imageProxy.close()
                         return@setAnalyzer
                     }
-                    val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                    scanner.process(image)
-                        .addOnSuccessListener { barcodes -> handleBarcodes(barcodes) { parsed -> handled = true; currentOnScanned(parsed) } }
-                        .addOnCompleteListener { imageProxy.close() }
+                    // Y-plane luminance is all ZXing needs; rowStride padding is
+                    // cropped away by PlanarYUVLuminanceSource's dataWidth/crop.
+                    val plane = imageProxy.planes.firstOrNull()
+                    if (plane == null) {
+                        imageProxy.close()
+                        return@setAnalyzer
+                    }
+                    val buffer = plane.buffer
+                    val data = ByteArray(buffer.remaining())
+                    buffer.get(data)
+                    val source = PlanarYUVLuminanceSource(
+                        data,
+                        plane.rowStride,
+                        imageProxy.height,
+                        0, 0,
+                        imageProxy.width,
+                        imageProxy.height,
+                        false,
+                    )
+                    val raw = QrDecoder.decode(source)
+                    if (raw != null) {
+                        val parsed = RoomCode.parseDeepLink(raw)
+                        if (parsed != null && !handled) {
+                            handled = true
+                            currentOnScanned(parsed)
+                        }
+                    }
+                    imageProxy.close()
                 }
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
@@ -147,10 +161,4 @@ private fun CameraPreview(onScanned: (RoomCode.Parsed) -> Unit) {
             previewView
         },
     )
-}
-
-private fun handleBarcodes(barcodes: List<Barcode>, onParsed: (RoomCode.Parsed) -> Unit) {
-    val raw = barcodes.firstNotNullOfOrNull { it.rawValue } ?: return
-    val parsed = RoomCode.parseDeepLink(raw) ?: return
-    onParsed(parsed)
 }

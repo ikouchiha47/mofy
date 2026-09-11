@@ -44,8 +44,8 @@ android {
         applicationId = "com.mofy.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.2.2"
+        versionCode = 6
+        versionName = "0.3.0"
 
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         buildConfigField("String", "WT_SIGNALING_URL", "\"$wtSignalingUrl\"")
@@ -206,13 +206,13 @@ dependencies {
     // Watch Together Stage C: QR encoding of the room deep link.
     implementation("com.google.zxing:core:3.5.3")
 
-    // Watch Together Stage C3b: camera QR scan for join-by-scan (zxing
-    // above is encode-only, this is the decode side).
+    // Watch Together Stage C3b: camera QR scan for join-by-scan - ZXing
+    // (core above) does both encode (QrCode.kt) and decode (QrDecoder.kt),
+    // replacing ML Kit (proprietary Google binary, F-Droid blocker).
     implementation("androidx.camera:camera-core:1.4.1")
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // On-device embedding — EmbeddingGemma-300m via LiteRT Interpreter API (CPU).
     // litert-api:2.2.0 (CompiledModel) aborts in Environment.nativeCreate on this device.

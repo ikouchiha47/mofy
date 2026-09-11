@@ -2,8 +2,10 @@ package com.mofy.app.playback.youtube
 
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable
 
-/** Real-network smoke test, same rationale as YoutubeStreamResolverTest - a mock can't catch YouTube changing something underneath the extractor. */
+/** Real-network smoke test, same rationale as YoutubeStreamResolverTest - a mock can't catch YouTube changing something underneath the extractor. Skipped on CI: YouTube bot-blocks datacenter IPs. */
+@DisabledIfEnvironmentVariable(named = "CI", matches = "true")
 class YoutubeSearchClientTest {
 
     @Test

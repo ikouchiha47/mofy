@@ -2,6 +2,7 @@ package com.mofy.app.playback.youtube
 
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable
 
 /**
  * Real-network smoke test - deliberately not mocked, since the actual risk
@@ -9,7 +10,12 @@ import org.junit.jupiter.api.Test
  * mock would never catch. Big Buck Bunny's official upload is used as the
  * target: a stable, unlikely-to-be-taken-down public video, not tied to any
  * account/region-specific availability.
+ *
+ * Skipped on CI (GitHub Actions sets CI=true): YouTube bot-blocks datacenter
+ * IPs with SignInConfirmNotBotException, so these smoke tests only run on a
+ * real device-connected dev machine where YouTube is reachable.
  */
+@DisabledIfEnvironmentVariable(named = "CI", matches = "true")
 class YoutubeStreamResolverTest {
 
     @Test

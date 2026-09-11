@@ -44,8 +44,8 @@ android {
         applicationId = "com.mofy.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.2"
 
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         buildConfigField("String", "WT_SIGNALING_URL", "\"$wtSignalingUrl\"")

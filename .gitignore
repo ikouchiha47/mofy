@@ -1,6 +1,8 @@
 .env.*
 !.env
 
+*.DS_Store
+
 # Android
 android/.gradle/
 android/local.properties

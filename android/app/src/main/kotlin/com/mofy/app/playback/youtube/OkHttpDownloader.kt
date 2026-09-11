@@ -9,6 +9,8 @@ import org.schabi.newpipe.extractor.downloader.Request as NewPipeRequest
 import org.schabi.newpipe.extractor.downloader.Response as NewPipeResponse
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.util.concurrent.TimeUnit
 
 /**
  * NewPipeExtractor's [Downloader] is an abstract class every embedder must
@@ -30,28 +32,51 @@ class OkHttpDownloader(private val client: OkHttpClient) : Downloader() {
             "HEAD" -> builder.head()
             else -> builder.method(
                 request.httpMethod(),
+                // A ByteArray-backed RequestBody is replayable (unlike a
+                // stream-backed one), so the same built Request is safe to
+                // reuse across the retry attempts below.
                 body?.toRequestBody("application/octet-stream".toMediaTypeOrNull()),
             )
         }
+        val okRequest = builder.build()
 
-        client.newCall(builder.build()).execute().use { response ->
-            if (response.code == 429) {
-                throw ReCaptchaException("reCAPTCHA challenge requested", request.url())
+        // Retried only on timeout-class failures (a slow mobile connection,
+        // confirmed on a real device: "Couldn't load resolutions: timeout"
+        // on OkHttp's 10s default) - a real error (404, malformed response)
+        // fails the same way every attempt, so retrying it would just waste
+        // time up to RETRY_TIMEOUTS_SECONDS.last() for nothing.
+        var lastError: IOException? = null
+        for (timeoutSeconds in RETRY_TIMEOUTS_SECONDS) {
+            val attemptClient = client.newBuilder()
+                .callTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .build()
+            try {
+                attemptClient.newCall(okRequest).execute().use { response ->
+                    if (response.code == 429) {
+                        throw ReCaptchaException("reCAPTCHA challenge requested", request.url())
+                    }
+                    val bodyString = response.body?.string()
+                    val headers = response.headers.toMultimap()
+                    return NewPipeResponse(
+                        response.code,
+                        response.message,
+                        headers,
+                        bodyString,
+                        response.request.url.toString(),
+                    )
+                }
+            } catch (e: InterruptedIOException) {
+                // Covers both SocketTimeoutException and a callTimeout trip.
+                lastError = e
             }
-            val bodyString = response.body?.string()
-            val headers = response.headers.toMultimap()
-            return NewPipeResponse(
-                response.code,
-                response.message,
-                headers,
-                bodyString,
-                response.request.url.toString(),
-            )
         }
+        throw lastError ?: IOException("request failed after retries: ${request.url()}")
     }
 
     companion object {
-        /** One shared client - NewPipeExtractor issues many requests per page resolve. */
+        private val RETRY_TIMEOUTS_SECONDS = listOf(10L, 30L, 60L, 120L)
+
+        /** One shared client (base config) - per-attempt timeout is applied via newBuilder() in execute(). */
         val instance: OkHttpDownloader by lazy { OkHttpDownloader(OkHttpClient()) }
     }
 }

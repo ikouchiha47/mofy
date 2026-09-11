@@ -10,9 +10,11 @@ import retrofit2.HttpException
 import retrofit2.Response
 
 /**
- * ADR 0009 task 5: safeCallWithRetry must retry on 429 (with 1s/2s/4s
- * backoff) up to maxAttempts, and must not retry on other errors.
- * runTest's virtual clock skips the real delays.
+ * Retry/backoff moved out of the repository into RetryBackoffInterceptor (the
+ * HTTP layer, exercised end-to-end against MockWebServer in
+ * RetryBackoffInterceptorTest). These tests pin the new repository contract:
+ * exactly ONE attempt per call - a 429 or network failure surfaces as the
+ * corresponding Failure immediately, and success passes through untouched.
  */
 class TmdbRepositoryRetryTest {
 
@@ -46,18 +48,7 @@ class TmdbRepositoryRetryTest {
     }
 
     @Test
-    fun `429 twice then success returns Success after three attempts`() = runTest {
-        val api = FakeTmdbApi(failWith429Times = 2)
-        val repo = TmdbRepository(api)
-
-        val result = repo.upcomingMovies("US")
-
-        assertTrue(result is TmdbResult.Success, "expected Success, got $result")
-        assertEquals(3, api.attempts)
-    }
-
-    @Test
-    fun `persistent 429 returns Failure after exactly maxAttempts`() = runTest {
+    fun `429 returns Failure immediately - no repository-level retry`() = runTest {
         val api = FakeTmdbApi(failWith429Times = Int.MAX_VALUE)
         val repo = TmdbRepository(api)
 
@@ -66,6 +57,19 @@ class TmdbRepositoryRetryTest {
         assertTrue(result is TmdbResult.Failure, "expected Failure, got $result")
         val error = (result as TmdbResult.Failure).error
         assertTrue(error is TmdbError.Http && error.code == 429, "expected Http(429), got $error")
-        assertEquals(3, api.attempts, "must not retry more than maxAttempts times")
+        // Retry is the interceptor's job (RetryBackoffInterceptorTest) - the
+        // repository must not attempt more than once.
+        assertEquals(1, api.attempts, "repository must not retry on 429")
+    }
+
+    @Test
+    fun `success passes through after one attempt`() = runTest {
+        val api = FakeTmdbApi(failWith429Times = 0)
+        val repo = TmdbRepository(api)
+
+        val result = repo.upcomingMovies("US")
+
+        assertTrue(result is TmdbResult.Success, "expected Success, got $result")
+        assertEquals(1, api.attempts)
     }
 }

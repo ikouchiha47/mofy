@@ -3,10 +3,13 @@ package com.mofy.app.data.tmdb
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.mofy.app.BuildConfig
 import kotlinx.serialization.json.Json
+import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import okhttp3.dnsoverhttps.DnsOverHttps
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -44,10 +47,35 @@ object TmdbClient {
         chain.proceed(chain.request())
     }
 
+    // Retry + circuit breaker (Failsafe-backed interceptor): 429 → Retry-After
+    // (default 10s), escalating per-attempt timeouts 10/30/60/120s, 5xx or
+    // unreachable-endpoint → open circuit after 3 consecutive failures.
+    // Replaces the old repository-level safeCallWithRetry (1/2/4s) so there's
+    // one mechanism.
+    private val retryBackoffInterceptor = RetryBackoffInterceptor(RetryBackoffConfig())
+
+    // Jio's resolver hands out a blackholed IP for api.themoviedb.org
+    // (49.44.79.236 - unreachable from the Jio uplink itself). Resolve via
+    // Cloudflare DNS-over-HTTPS instead - the DoH endpoint itself resolves
+    // fine on Jio, and returns healthy CloudFront IPs (verified live).
+    // This transport client must NOT itself use the DoH Dns (no recursion);
+    // it only performs the DNS-over-HTTPS query against Cloudflare.
+    private val dohTransportClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
+
+    private val tmdbDns: Dns = DnsOverHttps.Builder()
+        .client(dohTransportClient)
+        .url("https://cloudflare-dns.com/dns-query".toHttpUrl())
+        .build()
+
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
         .addInterceptor(rateLimitInterceptor)
+        .addInterceptor(retryBackoffInterceptor)
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+        .dns(tmdbDns)
         .build()
 
     private val json = Json { ignoreUnknownKeys = true }

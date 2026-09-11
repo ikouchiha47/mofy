@@ -72,6 +72,9 @@ fun LinkScreen(
     // Null hides the "Link from YouTube" option entirely - not every
     // LinkScreen call site is ready to handle it yet.
     onSaveYoutubeLink: ((videoId: String, resolution: String, title: String, thumbnailUrl: String?) -> Unit)? = null,
+    // The linked item's known title (existing-item call site only) - seeds
+    // and auto-runs the YouTube search instead of starting blank.
+    initialYoutubeQuery: String = "",
 ) {
     val context = LocalContext.current
     var folderFiles by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -108,6 +111,7 @@ fun LinkScreen(
                     onSaveYoutubeLink?.invoke(videoId, resolution, title, thumbnailUrl)
                 },
                 onCancel = { browserMode = null },
+                initialQuery = initialYoutubeQuery,
             )
         }
     } else if (browserMode != null) {

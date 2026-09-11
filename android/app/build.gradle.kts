@@ -163,6 +163,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    // DNS-over-HTTPS resolver for TMDB: Jio's resolver hands out a blackholed
+    // IP for api.themoviedb.org (49.44.79.236); resolve via Cloudflare instead.
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
 
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
@@ -237,6 +240,10 @@ dependencies {
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.21.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     testImplementation("androidx.room:room-testing:2.8.1")
+    // Failsafe 3.3.2 (core) for retry + circuit breaker in OkHttp interceptor
+    implementation("dev.failsafe:failsafe:3.3.2")
+    // MockWebServer 4.12.0 for testing the interceptor against a fake HTTP server
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
 
     androidTestImplementation("androidx.test:runner:1.6.2")

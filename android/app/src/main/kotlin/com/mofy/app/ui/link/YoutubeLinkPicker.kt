@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,8 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
 import coil3.compose.AsyncImage
 import com.mofy.app.playback.youtube.YoutubeSearchClient
 import com.mofy.app.playback.youtube.YoutubeSearchResult
@@ -55,10 +58,28 @@ fun YoutubeLinkPicker(
     contentPadding: PaddingValues,
     onPicked: (videoId: String, resolution: String, title: String, thumbnailUrl: String?) -> Unit,
     onCancel: () -> Unit,
+    // Set when opened from an existing library item's Link screen - its
+    // title is already known, so search runs immediately instead of asking
+    // the user to retype what's already on screen. Blank for the "new item"
+    // entry point, where there's no title yet to seed with.
+    initialQuery: String = "",
 ) {
-    var query by remember { mutableStateOf("") }
+    // This composable is hosted inside a plain Dialog (LinkScreen), which -
+    // unlike a normal Activity window - doesn't resize/pan for the soft
+    // keyboard by default in Compose. Without this, the search field never
+    // visibly receives IME input (typing appeared to do nothing, confirmed
+    // on a real device): the dialog's window needs SOFT_INPUT_ADJUST_RESIZE
+    // explicitly, same as any Compose Dialog + text input combination needs.
+    val view = LocalView.current
+    SideEffect {
+        (view.parent as? DialogWindowProvider)?.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+        )
+    }
+
+    var query by remember { mutableStateOf(initialQuery) }
     var results by remember { mutableStateOf<List<YoutubeSearchResult>>(emptyList()) }
-    var searching by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(initialQuery.isNotBlank()) }
     var searchError by remember { mutableStateOf<String?>(null) }
 
     var selected by remember { mutableStateOf<YoutubeSearchResult?>(null) }
@@ -79,7 +100,13 @@ fun YoutubeLinkPicker(
         resolvingResolutions = false
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(contentPadding).padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(contentPadding)
+            .padding(16.dp),
+    ) {
         if (selected == null) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(

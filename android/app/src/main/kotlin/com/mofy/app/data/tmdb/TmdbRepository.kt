@@ -37,44 +37,25 @@ class TmdbRepository(private val api: TmdbApi = TmdbClient.api) {
     suspend fun findByImdbId(imdbId: String): TmdbResult<TmdbFindResponse> =
         safeCall { api.findByImdbId(imdbId) }
 
-    // --- New/upcoming feed endpoints (ADR 0009) - rate-limit-aware ---
+    // --- New/upcoming feed endpoints (ADR 0009) ---
+    // Retry/backoff for 429 and 5xx lives in RetryBackoffInterceptor (HTTP
+    // layer): 429 honors Retry-After (default 10s), 5xx trips the circuit
+    // breaker after 3 consecutive request failures. No repository-level retry.
 
     suspend fun upcomingMovies(region: String): TmdbResult<List<MediaResult>> =
-        safeCallWithRetry { api.upcomingMovies(region).results.map { it.toMediaResult(MediaType.MOVIE) } }
+        safeCall { api.upcomingMovies(region).results.map { it.toMediaResult(MediaType.MOVIE) } }
 
     suspend fun nowPlayingMovies(region: String): TmdbResult<List<MediaResult>> =
-        safeCallWithRetry { api.nowPlayingMovies(region).results.map { it.toMediaResult(MediaType.MOVIE) } }
+        safeCall { api.nowPlayingMovies(region).results.map { it.toMediaResult(MediaType.MOVIE) } }
 
     suspend fun onTheAirTv(): TmdbResult<List<MediaResult>> =
-        safeCallWithRetry { api.onTheAirTv().results.map { it.toMediaResult(MediaType.TV) } }
+        safeCall { api.onTheAirTv().results.map { it.toMediaResult(MediaType.TV) } }
 
     suspend fun airingTodayTv(timezone: String): TmdbResult<List<MediaResult>> =
-        safeCallWithRetry { api.airingTodayTv(timezone).results.map { it.toMediaResult(MediaType.TV) } }
+        safeCall { api.airingTodayTv(timezone).results.map { it.toMediaResult(MediaType.TV) } }
 
     suspend fun configurationTimezones(): TmdbResult<List<TmdbTimezoneEntry>> =
         safeCall { api.configurationTimezones() }
-
-    /**
-     * safeCall + retry on HTTP 429 (TMDB rate limit) with exponential backoff
-     * 1s/2s/4s, max 3 attempts - the fixed schedule is the v1 acceptance bar
-     * (reading TMDB's Retry-After header is a possible later improvement).
-     * Never crashes the caller: on exhaustion returns the last Failure.
-     */
-    private suspend fun <T> safeCallWithRetry(
-        maxAttempts: Int = 3,
-        block: suspend () -> T,
-    ): TmdbResult<T> {
-        var lastResult: TmdbResult<T>
-        var attempt = 0
-        while (true) {
-            lastResult = safeCall(block)
-            val failure = lastResult as? TmdbResult.Failure
-            val isRateLimited = failure?.error is TmdbError.Http && (failure.error as TmdbError.Http).code == 429
-            attempt++
-            if (!isRateLimited || attempt >= maxAttempts) return lastResult
-            kotlinx.coroutines.delay(1000L * (1L shl (attempt - 1))) // 1s, 2s, 4s
-        }
-    }
 
     private suspend fun <T> safeCall(block: suspend () -> T): TmdbResult<T> = try {
         TmdbResult.Success(block())

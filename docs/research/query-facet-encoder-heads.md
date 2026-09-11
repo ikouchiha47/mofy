@@ -16,10 +16,10 @@ hard filters + residual semantic search:
 
 ```
 "dark psychological thriller from the 80s under 2 hours"
-→ genre=[Thriller,…]  date=1980–1989  runtime_max=120  mood=yes  …
+-> genre=[Thriller,…]  date=1980-1989  runtime_max=120  mood=yes  …
 ```
 
-Not “generate JSON.” Correctness + predictable schema.
+Not "generate JSON." Correctness + predictable schema.
 
 ---
 
@@ -45,6 +45,19 @@ layer on the CLS vector that answers one slot:
      └─ title / mood / other  (binary presence)
 ```
 
+```mermaid
+flowchart TB
+    Query["dark psychological thriller from the 80s under 2 hours"]
+    Encoder["DistilBERT / BERT-tiny<br/>shared encoder, one CLS vector"]
+    Query --> Encoder
+    Encoder --> Genre["genre head<br/>multi-label"]
+    Encoder --> Date["date head<br/>has + years"]
+    Encoder --> Runtime["runtime head<br/>has + minutes"]
+    Encoder --> Rating["rating head<br/>has + min"]
+    Encoder --> Popularity["popularity head<br/>none | niche | main"]
+    Encoder --> Other["title / mood / other<br/>binary presence"]
+```
+
 | Head | Output | Loss |
 |------|--------|------|
 | genre | 27 multi-label (catalog genres) | BCE + pos_weight |
@@ -63,15 +76,15 @@ returns the same keys.
 
 | Approach | Model | Result |
 |----------|-------|--------|
-| Seq2seq → **JSON** spans | flan-t5-small | Broken. T5 SentencePiece maps `{`/`}` → `<unk>`. Model emits garbage like `s"pan:…type:mod`. |
-| Seq2seq → **TANL** `[ span \| type \| norm ]` | flan-t5-small | Code switched to TANL; checkpoint still JSON-shaped. Still free-form generation + brittle parse. |
-| Few-shot JSON / binary labels | Gemma 270M, Qwen 0.5B | Unreliable open generation; binary “which facets?” only solves presence, not values. |
+| Seq2seq -> **JSON** spans | flan-t5-small | Broken. T5 SentencePiece maps `{`/`}` -> `<unk>`. Model emits garbage like `s"pan:…type:mod`. |
+| Seq2seq -> **TANL** `[ span \| type \| norm ]` | flan-t5-small | Code switched to TANL; checkpoint still JSON-shaped. Still free-form generation + brittle parse. |
+| Few-shot JSON / binary labels | Gemma 270M, Qwen 0.5B | Unreliable open generation; binary "which facets?" only solves presence, not values. |
 | DSPy CoT span typing | Qwen variants | Parse errors, invents types. |
 
 **Lesson:** small generative models are bad at freestyle structure. They are
 fine at **classification into a fixed schema**.
 
-Low CE loss on T5 did **not** mean usable output — always measure after a
+Low CE loss on T5 did **not** mean usable output - always measure after a
 real decoder/parser (or avoid generation entirely).
 
 ---
@@ -82,11 +95,11 @@ real decoder/parser (or avoid generation entirely).
 
 Training (AWS `c5.2xlarge`, CPU, 8 epochs DistilBERT / 12 bert-tiny):
 
-1. Map each example’s `spans[]` → fixed label tensor (genre multi-hot,
+1. Map each example's `spans[]` -> fixed label tensor (genre multi-hot,
    date range, runtime_max, rating_min, popularity class, binary flags).
-2. Genre aliases when `normalized` is null (`sci-fi` → Sci-Fi, etc.).
-3. Decade phrases when date norm missing (`90s` → 1990–1999).
-4. Genre `pos_weight` (capped 20×) so Drama doesn’t dominate rare genres.
+2. Genre aliases when `normalized` is null (`sci-fi` -> Sci-Fi, etc.).
+3. Decade phrases when date norm missing (`90s` -> 1990-1999).
+4. Genre `pos_weight` (capped 20×) so Drama doesn't dominate rare genres.
 5. Regression losses **masked** to examples where the slot is present.
 
 ### Val metrics (n=422)
@@ -111,31 +124,31 @@ Training (AWS `c5.2xlarge`, CPU, 8 epochs DistilBERT / 12 bert-tiny):
 
 ```
 nostalgic 90s comedy hidden gem
-→ genre=[Comedy] has_date has_mood popularity=niche
+-> genre=[Comedy] has_date has_mood popularity=niche
 
 critically acclaimed sci-fi under 2 hours
-→ genre=[Sci-Fi,…] has_runtime has_rating
+-> genre=[Sci-Fi,…] has_runtime has_rating
 
 download inception 2010 1080p
-→ has_title has_other has_date
+-> has_title has_other has_date
 ```
 
-Always valid JSON-like dict from `decode_batch` — no string parse step.
+Always valid JSON-like dict from `decode_batch` - no string parse step.
 
 ---
 
 ## Weak spots
 
-1. **Exact years** — decades often land nearby (e.g. “80s” → ~1999–2004, not
-   1980–1989). MAE ~5 years. Prefer regex/rules for `\b\d{2,4}s?\b` and
+1. **Exact years** - decades often land nearby (e.g. "80s" -> ~1999-2004, not
+   1980-1989). MAE ~5 years. Prefer regex/rules for `\b\d{2,4}s?\b` and
    explicit years; use the head as backup.
-2. **Genre bleed** — occasional extra Drama; rare genres still harder.
-3. **Title** — only ~7% of train data; F1 ~0.75. Better as FTS/catalog match
+2. **Genre bleed** - occasional extra Drama; rare genres still harder.
+3. **Title** - only ~7% of train data; F1 ~0.75. Better as FTS/catalog match
    than model-only.
-4. **Mood is presence-only** — open mood text still goes to embeddings
+4. **Mood is presence-only** - open mood text still goes to embeddings
    (residual), not a closed mood vocab yet.
 5. **Runtime/rating regression** coarse with few positives (runtime ~5% of data).
-6. **No on-device path yet** — PyTorch fp32 checkpoints only (see size below).
+6. **No on-device path yet** - PyTorch fp32 checkpoints only (see size below).
 
 ---
 
@@ -157,15 +170,15 @@ Not int8/ONNX/LiteRT yet.
 |--------|-------------|--------|
 | fp32 PyTorch (now) | ~250 MB | Dev only |
 | fp16 / bf16 weights | ~125 MB | Easy win |
-| int8 dynamic / weight-only | **~60–70 MB** | Same ballpark as old T5 int8 plan |
+| int8 dynamic / weight-only | **~60-70 MB** | Same ballpark as old T5 int8 plan |
 | int8 + ONNX or LiteRT | ~60 MB + runtime | Real on-device path |
-| BERT-tiny int8 | **~5–8 MB** | Tiny, but genre quality not good enough yet |
+| BERT-tiny int8 | **~5-8 MB** | Tiny, but genre quality not good enough yet |
 
-EmbeddingGemma is already on-device (ADR 0002). A second ~60–70 MB int8
+EmbeddingGemma is already on-device (ADR 0002). A second ~60-70 MB int8
 encoder is plausible; 250 MB fp32 is not.
 
 **Recommendation:** keep DistilBERT as the quality model; add int8 (torchao
-or ONNX Runtime) + LiteRT/ONNX export before app integration. Don’t ship
+or ONNX Runtime) + LiteRT/ONNX export before app integration. Don't ship
 bert-tiny for genre until quality improves (more data or distillation from
 DistilBERT).
 
@@ -196,10 +209,10 @@ AWS: existing `c5.2xlarge` pattern in `ml/train/aws_setup.sh` (point at
 ## Fit in the product
 
 - **Hard filters:** genre, date, runtime, rating when head confidence high.
-- **Soft / residual:** mood text + leftover query → EmbeddingGemma + FTS
+- **Soft / residual:** mood text + leftover query -> EmbeddingGemma + FTS
   (existing Track B).
 - **Title / other:** catalog FTS and format tokens (`1080p`, `download`) more
   than the encoder alone.
 
 Aligns with ADR 0008: high-confidence structured facets + residual semantic
-search — without depending on an on-device generative SLM for JSON.
+search - without depending on an on-device generative SLM for JSON.

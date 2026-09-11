@@ -897,9 +897,11 @@ private fun MofyApp(
             composable(PushedRoute.LINK) { backStack ->
                 val linkItemId = backStack.arguments?.getString("itemId") ?: ""
                 val existingLinks by database.libraryDao().observeLinks(linkItemId).collectAsState(initial = emptyList())
+                val linkItem by database.libraryDao().observeById(linkItemId).collectAsState(initial = null)
                 com.mofy.app.ui.link.LinkScreen(
                     contentPadding = contentPadding,
                     existingLinks = existingLinks,
+                    initialYoutubeQuery = linkItem?.title ?: "",
                     onSetActive = { linkId ->
                         coroutineScope.launch { database.libraryDao().setActiveLink(linkItemId, linkId) }
                     },

@@ -5,6 +5,8 @@ import android.content.Context
 import android.util.Log
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.models.ModelDownloadRepository
+import com.mofy.app.data.models.ModelFileCleanup
+import com.mofy.app.data.models.ModelIntegrityRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
@@ -34,6 +36,7 @@ private const val MODEL_NATIVE_DIM = 768
 private const val EMBEDDING_DIM = 256
 private const val PROMPT_PREFIX = "task: search result | query: "
 
+
 /** Embedding provider for on-device text → vector. Implemented by OnDeviceEmbedder; fakes in tests. */
 interface TextEmbedder {
     suspend fun embed(text: String): FloatArray?
@@ -50,9 +53,36 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
     // which stays on the plain in-process download.
     private val downloadRepository = ModelDownloadRepository(context, AppDatabase.get(context).modelDownloadDao())
 
+    /**
+     * A truncated download keeps a valid "TFL3" header, so the magic-byte check
+     * alone can't catch it - the authoritative test is whether the runtime can
+     * load it. On load failure, delete the file (and its .tmp) and re-download
+     * once; if it still won't load, let the caller's catch mark it FAILED.
+     */
+    private suspend fun loadInterpreterWithReDownload(modelFile: File, opts: Interpreter.Options): Interpreter {
+        return try {
+            Interpreter(modelFile, opts)
+        } catch (e: Exception) {
+            Log.w(TAG, "Embedder model present but failed to load - deleting and re-downloading", e)
+            modelFile.delete()
+            File(modelFile.parent, "${modelFile.name}.tmp").delete()
+            val ok = downloadRepository.ensureDownloaded(MODEL_KEY, MODEL_URL, modelFile, "Mofy – embedding model")
+            if (!ok) throw e
+            Interpreter(modelFile, opts)
+        }
+    }
+
     suspend fun init(): Boolean = withContext(Dispatchers.IO) {
         if (interpreter != null) return@withContext true
         try {
+            val filesDir = context.filesDir
+            ModelFileCleanup.deleteOrphanTmpFiles(filesDir, keepNames = setOf(MODEL_FILE, TOKENIZER_FILE))
+            ModelFileCleanup.deleteStaleFiles(
+                filesDir,
+                keepNames = setOf(MODEL_FILE, TOKENIZER_FILE),
+                matches = { it.startsWith("mofy") && it.endsWith(".tflite") },
+            )
+
             val tokenizerFile = File(context.filesDir, TOKENIZER_FILE)
             if (!tokenizerFile.exists()) {
                 Log.i(TAG, "Downloading tokenizer…")
@@ -61,6 +91,14 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
             }
 
             val modelFile = File(context.filesDir, MODEL_FILE)
+            // If the model file exists but fails integrity verification (size +
+            // SHA-256), delete it and its .tmp sibling so ensureDownloaded()
+            // re-fetches it. Unknown files (no registered expectation) pass.
+            if (modelFile.exists() && !ModelIntegrityRegistry.verify(modelFile)) {
+                Log.w(TAG, "Found corrupt model file (${modelFile.length()} bytes) - deleting for re-download")
+                modelFile.delete()
+                File(modelFile.parent, "${modelFile.name}.tmp").delete()
+            }
             if (!modelFile.exists()) {
                 val ok = downloadRepository.ensureDownloaded(MODEL_KEY, MODEL_URL, modelFile, "Mofy – embedding model")
                 if (!ok) return@withContext false
@@ -69,7 +107,7 @@ class OnDeviceEmbedder(private val context: Context) : TextEmbedder {
             tokenizer = HuggingFaceTokenizer.newInstance(tokenizerFile.toPath())
 
             val opts = Interpreter.Options().apply { setNumThreads(2) }
-            interpreter = Interpreter(modelFile, opts)
+            interpreter = loadInterpreterWithReDownload(modelFile, opts)
 
             Log.i(TAG, "OnDeviceEmbedder ready (Interpreter API)")
             (downloader as? HttpModelDownloader)?.cancelNotif()

@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.models.ModelDownloadState
 import com.mofy.app.data.models.ModelDownloadStatus
+import com.mofy.app.data.models.ModelIntegrityRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +25,9 @@ import java.net.URL
 
 private const val TAG = "ModelDownloadService"
 private const val NOTIF_CHANNEL = "mofy_model_download"
+
+/** Thrown when a download passes the byte-copy loop but fails validation (truncated, wrong content, not a valid model). These are NOT resume-worthy — we delete the partial so the next attempt starts fresh. */
+private class DownloadValidationException(message: String) : Exception(message)
 
 /**
  * ADR 0010 tasks 3+4: plain foreground Service (mirrors LibreTorrent's
@@ -132,6 +136,13 @@ class ModelDownloadService : Service() {
             val startOffset = if (supportsResume) resumeFrom else 0L
             if (!supportsResume && tmp.exists()) tmp.delete()
 
+            // Validate HTTP response code on the normal (non-resume) path too.
+            // Only 200 (OK) or 206 (Partial Content) are acceptable.
+            val responseCode = conn.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
+                throw DownloadValidationException("HTTP $responseCode")
+            }
+
             val total = (conn.contentLengthLong.coerceAtLeast(0L)) + startOffset
             var downloaded = startOffset
             var lastPct = -1
@@ -184,7 +195,34 @@ class ModelDownloadService : Service() {
                 }
             }
             conn.disconnect()
-            tmp.renameTo(dest)
+
+            // Validate byte count matches Content-Length (if server provided one).
+            // A premature EOF would exit the read loop cleanly but leave us short.
+            if (conn.contentLengthLong > 0 && (downloaded - startOffset) != conn.contentLengthLong) {
+                throw DownloadValidationException("Truncated download: got ${downloaded - startOffset} of ${conn.contentLengthLong} bytes")
+            }
+            if (total > 0 && downloaded != total) {
+                throw DownloadValidationException("Byte count mismatch: expected $total, got $downloaded")
+            }
+
+            // Validate the downloaded body before finalizing: reject HTML/error pages,
+            // empty files, and files that aren't valid TFLite/ONNX models.
+            validateDownloadedBody(tmp, conn.contentType)
+
+            // Deterministic integrity check: expected size + SHA-256 (authoritative
+            // corruption detection, replaces reliance on load-time failure).
+            val expected = ModelIntegrityRegistry.expectedFor(dest.name)
+            if (expected != null && !ModelIntegrityRegistry.verify(tmp)) {
+                throw DownloadValidationException(
+                    "Integrity check failed for ${dest.name} (expected ${expected.sizeBytes} bytes)",
+                )
+            }
+
+            // Delete destination first — renameTo fails on some filesystems if dest exists.
+            dest.delete()
+            if (!tmp.renameTo(dest)) {
+                throw DownloadValidationException("Could not finalize download")
+            }
 
             dao.upsert(
                 ModelDownloadState(
@@ -207,6 +245,12 @@ class ModelDownloadService : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Download failed for $modelKey", e)
+            // If validation failed, the file is content-invalid — delete both tmp and dest
+            // so we don't resume a corrupt partial. Other exceptions keep tmp for resume.
+            if (e is DownloadValidationException) {
+                tmp.delete()
+                dest.delete()
+            }
             dao.upsert(
                 ModelDownloadState(
                     modelKey = modelKey,
@@ -223,6 +267,50 @@ class ModelDownloadService : Service() {
             // tmp is deliberately kept (not deleted) - a partial file is what
             // resume-on-retry needs; only a full success renames it away.
         }
+    }
+
+    /**
+     * Validates that the downloaded file is a genuine model file, not an HTML
+     * error page or a truncated/corrupt binary. Called after the copy loop but
+     * before the file is renamed into place and marked COMPLETE.
+     *
+     * Failure modes this catches (all observed in the wild):
+     * - GitHub releases returns a 200 with an HTML "file not found" page when
+     *   the asset is missing (no 404 because the *page* exists).
+     * - Network proxy/captive portal injects an HTML login page.
+     * - Premature EOF leaves a truncated .tflite/.onnx that passes exists()
+     *   but fails interpreter creation with "does not encode a valid model".
+     */
+    private fun validateDownloadedBody(file: File, responseContentType: String?) {
+        if (!file.exists() || file.length() == 0L) {
+            throw DownloadValidationException("Downloaded file is empty")
+        }
+        val header = ByteArray(8)
+        file.inputStream().use { it.read(header) }
+
+        // Detect HTML/error pages: first non-whitespace byte is '<' or
+        // Content-Type says text/html.
+        val firstNonWs = header.firstOrNull { it.toInt() !in 0x09..0x0D && it.toInt() != 0x20 } // skip \t \n \r space
+        if (firstNonWs?.toInt() == 0x3C || // '<'
+            responseContentType?.lowercase()?.contains("text/html") == true) {
+            throw DownloadValidationException("Server returned a web page, not a model file")
+        }
+
+        val destName = file.name.lowercase()
+        if (destName.endsWith(".tflite")) {
+            // FlatBuffer file identifier at offset 4..7: "TFL3" (0x54 0x46 0x4C 0x33)
+            if (file.length() <= 8 ||
+                header[4].toInt() != 0x54 || header[5].toInt() != 0x46 || header[6].toInt() != 0x4C || header[7].toInt() != 0x33) {
+                throw DownloadValidationException("Downloaded file is not a valid TensorFlow Lite model")
+            }
+        } else if (destName.endsWith(".onnx")) {
+            // ONNX (protobuf) — first byte is field 1 (ir_version) = 0x08
+            if (header[0].toInt() != 0x08) {
+                throw DownloadValidationException("Downloaded file is not a valid ONNX model")
+            }
+        }
+        // Other file types (tokenizer.json, vocab.txt) — no magic bytes to check,
+        // but the HTML/empty checks above still apply.
     }
 
     private fun resolveRedirect(url: String): String {

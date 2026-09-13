@@ -66,6 +66,7 @@ import com.mofy.app.ui.nav.PlaceholderScreen
 import com.mofy.app.ui.nav.PushedRoute
 import com.mofy.app.ui.nav.TopLevelDestination
 import com.mofy.app.ui.settings.SettingsScreen
+import com.mofy.app.ui.settings.TmdbKeyWebViewScreen
 import com.mofy.app.ui.sites.EditSiteScreen
 import com.mofy.app.ui.theme.MofyTheme
 import com.mofy.app.playback.FakePlayerController
@@ -272,6 +273,14 @@ private fun MofyApp(
                 )
                 PushedRoute.LINK -> TopAppBar(
                     title = { Text("Link") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
+                        }
+                    },
+                )
+                PushedRoute.TMDB_KEY_WEBVIEW -> TopAppBar(
+                    title = { Text("TMDB API key") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back")
@@ -610,8 +619,14 @@ private fun MofyApp(
                     },
                 )
             }
+            composable(PushedRoute.TMDB_KEY_WEBVIEW) {
+                com.mofy.app.ui.settings.TmdbKeyWebViewScreen(contentPadding = contentPadding)
+            }
             composable(TopLevelDestination.SETTINGS.route) {
-                SettingsScreen(contentPadding = contentPadding)
+                SettingsScreen(
+                    contentPadding = contentPadding,
+                    onOpenTmdbKeyPage = { navController.navigate(PushedRoute.TMDB_KEY_WEBVIEW) }
+                )
             }
             composable(ROUTE_WEBVIEW) { backStack ->
                 val siteName = backStack.arguments?.getString("siteName") ?: ""
@@ -901,7 +916,10 @@ private fun MofyApp(
                 com.mofy.app.ui.link.LinkScreen(
                     contentPadding = contentPadding,
                     existingLinks = existingLinks,
-                    initialYoutubeQuery = linkItem?.title ?: "",
+                    // Seed the search with the known title plus " full movie" -
+                    // a bare title surfaces trailers and clips first, confirmed
+                    // against real results (see link flow).
+                    initialYoutubeQuery = linkItem?.title?.let { "$it full movie" } ?: "",
                     onSetActive = { linkId ->
                         coroutineScope.launch { database.libraryDao().setActiveLink(linkItemId, linkId) }
                     },

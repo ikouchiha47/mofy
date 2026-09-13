@@ -7,6 +7,8 @@ import android.content.Context
 import android.util.Log
 import com.mofy.app.data.library.AppDatabase
 import com.mofy.app.data.models.ModelDownloadRepository
+import com.mofy.app.data.models.ModelFileCleanup
+import com.mofy.app.data.models.ModelIntegrityRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -42,9 +44,37 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
     private val downloader: ModelDownloader = HttpModelDownloader(context, NOTIF_CHANNEL, NOTIF_ID)
     private val downloadRepository = ModelDownloadRepository(context, AppDatabase.get(context).modelDownloadDao())
 
+    /**
+     * A truncated ONNX download keeps a valid first byte (0x08), so the
+     * magic-byte check alone can't catch it - the authoritative test is
+     * whether the runtime can load it. On load failure, delete the file
+     * (and its .tmp) and re-download once; if it still won't load, let the
+     * caller's catch mark it FAILED.
+     */
+    private suspend fun loadSessionWithReDownload(modelFile: File): OrtSession {
+        return try {
+            env.createSession(modelFile.absolutePath)
+        } catch (e: Exception) {
+            Log.w(TAG, "ONNX model present but failed to load - deleting and re-downloading", e)
+            modelFile.delete()
+            File(modelFile.parent, "${modelFile.name}.tmp").delete()
+            val ok = downloadRepository.ensureDownloaded(MODEL_KEY, MODEL_URL, modelFile, "Mofy – smart search model")
+            if (!ok) throw e
+            env.createSession(modelFile.absolutePath)
+        }
+    }
+
     suspend fun init(): Boolean = withContext(Dispatchers.IO) {
         if (session != null) return@withContext true
         try {
+            val filesDir = context.filesDir
+            ModelFileCleanup.deleteOrphanTmpFiles(filesDir, keepNames = setOf(MODEL_FILE, VOCAB_FILE))
+            ModelFileCleanup.deleteStaleFiles(
+                filesDir,
+                keepNames = setOf(MODEL_FILE, VOCAB_FILE),
+                matches = { (it.startsWith("facet_model") && it.endsWith(".onnx")) || it.startsWith("facet_vocab") },
+            )
+
             val vocabFile = File(context.filesDir, VOCAB_FILE)
             if (!vocabFile.exists()) {
                 Log.i(TAG, "Downloading vocab…")
@@ -53,13 +83,21 @@ class ModelBasedFacetDecoder(private val context: Context) : FacetDecoder {
             }
 
             val modelFile = File(context.filesDir, MODEL_FILE)
+            // If the model file exists but fails integrity verification (size +
+            // SHA-256), delete it and its .tmp sibling so ensureDownloaded()
+            // re-fetches it. Unknown files (no registered expectation) pass.
+            if (modelFile.exists() && !ModelIntegrityRegistry.verify(modelFile)) {
+                Log.w(TAG, "Found corrupt model file (${modelFile.length()} bytes) - deleting for re-download")
+                modelFile.delete()
+                File(modelFile.parent, "${modelFile.name}.tmp").delete()
+            }
             if (!modelFile.exists()) {
                 val ok = downloadRepository.ensureDownloaded(MODEL_KEY, MODEL_URL, modelFile, "Mofy – smart search model")
                 if (!ok) return@withContext false
             }
 
             tokenizer = WordPieceTokenizer(vocabFile.readLines())
-            session = env.createSession(modelFile.absolutePath)
+            session = loadSessionWithReDownload(modelFile)
             Log.i(TAG, "ModelBasedFacetDecoder ready")
             (downloader as? HttpModelDownloader)?.cancelNotif()
             true

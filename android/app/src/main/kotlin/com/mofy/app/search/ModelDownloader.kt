@@ -5,7 +5,9 @@ import android.app.NotificationManager
 import android.content.Context
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.mofy.app.data.models.ModelIntegrityRegistry
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -37,7 +39,37 @@ class HttpModelDownloader(
         conn.instanceFollowRedirects = true
         conn.applyHfAuth()
         try {
-            conn.inputStream.use { it.copyTo(dest.outputStream()) }
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IOException("HTTP ${conn.responseCode}")
+            }
+            val total = conn.contentLengthLong
+            val tmp = File(dest.parent, "${dest.name}.tmp")
+            var downloaded = 0L
+            conn.inputStream.use { input ->
+                tmp.outputStream().use { output ->
+                    val buf = ByteArray(64 * 1024)
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) {
+                        output.write(buf, 0, n)
+                        downloaded += n
+                    }
+                }
+            }
+            if (total > 0 && downloaded != total) {
+                tmp.delete()
+                throw IOException("Truncated download: got $downloaded of $total bytes")
+            }
+            // Deterministic integrity check for known model files.
+            val expected = ModelIntegrityRegistry.expectedFor(dest.name)
+            if (expected != null && !ModelIntegrityRegistry.verify(tmp)) {
+                tmp.delete()
+                throw IOException("Integrity check failed for ${dest.name}")
+            }
+            dest.delete()
+            if (!tmp.renameTo(dest)) {
+                tmp.delete()
+                throw IOException("Could not finalize download")
+            }
         } catch (e: Exception) {
             dest.delete(); throw e
         } finally {
@@ -66,6 +98,9 @@ class HttpModelDownloader(
         conn.applyHfAuth()
         val tmp = File(dest.parent, "${dest.name}.tmp")
         try {
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IOException("HTTP ${conn.responseCode}")
+            }
             val total = conn.contentLengthLong.coerceAtLeast(0L)
             var downloaded = 0L
             var lastPct = -1
@@ -92,7 +127,21 @@ class HttpModelDownloader(
                     }
                 }
             }
-            tmp.renameTo(dest)
+            if (total > 0 && downloaded != total) {
+                tmp.delete()
+                throw IOException("Truncated download: got $downloaded of $total bytes")
+            }
+            // Deterministic integrity check for known model files.
+            val expected = ModelIntegrityRegistry.expectedFor(dest.name)
+            if (expected != null && !ModelIntegrityRegistry.verify(tmp)) {
+                tmp.delete()
+                throw IOException("Integrity check failed for ${dest.name}")
+            }
+            dest.delete()
+            if (!tmp.renameTo(dest)) {
+                tmp.delete()
+                throw IOException("Could not finalize download")
+            }
             Log.i("HttpModelDownloader", "Download complete: ${dest.length() / 1_048_576} MB")
             nm.notify(notifId, builder
                 .setOngoing(false).setProgress(0, 0, false)

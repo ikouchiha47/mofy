@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mofy — a private cinema for your own movies and TV</title>
+<meta name="description" content="Mofy is a personal Android app for browsing, searching, and watching movies and TV. Dark and fully on-device — semantic search, a curated vintage &amp; classics collection, Continue Watching, Watch Together, and playback from local files or YouTube. Direct APK download.">
+<meta name="theme-color" content="#0E0E10">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mofy">
+<meta property="og:url" content="https://ikouchiha47.github.io/mofy/">
+<meta property="og:title" content="Mofy — a private cinema for your own movies and TV">
+<meta property="og:description" content="A personal Android app for browsing, searching, and watching movies and TV. Dark and fully on-device, with a curated classics collection and playback from local files or YouTube. Not on the Play Store — sideload the APK.">
+<meta property="og:image" content="https://ikouchiha47.github.io/mofy/images/shot-11.png">
+<meta property="og:image:width" content="747">
+<meta property="og:image:height" content="1600">
+<meta property="og:image:alt" content="Mofy home screen showing Continue Watching, Recently Added, All Time Classics, and New Releases.">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" type="image/png" sizes="192x192" href="mofy-icon.png">
+<link rel="apple-touch-icon" href="mofy-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>
+
+<style>
+  :root {
+    --bg: #0E0E10;
+    --surface: #1A1A1D;
+    --surface-2: #232327;
+    --surface-3: #2B2B30;
+    --border: #2E2E33;
+    --text: #F2F2F2;
+    --text-soft: #C7C7CE;
+    --text-dim: #9A9AA2;
+    --accent: #E94560;
+    --accent-deep: #CE3550;
+    --accent-2: #4EA1FF;
+    --good: #3ECF8E;
+
+    --display: "Bungee", "Arial Black", Impact, system-ui, sans-serif;
+    --body: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    --r-sm: 8px;
+    --r-md: 10px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+
+    --wrap: min(1120px, 90vw);
+    --shadow-phone: 0 40px 70px -30px rgba(0,0,0,.95), 0 6px 20px -8px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  [id] { scroll-margin-top: 78px; } /* clear the sticky header on anchor jumps */
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.65;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  img { max-width: 100%; display: block; border-style: none; }
+  a { color: inherit; }
+
+  /* Fixed film-grain layer — decorative only. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: .05;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .wrap { width: var(--wrap); margin-inline: auto; }
+
+  /* ---------- Shared type ---------- */
+  .eyebrow {
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .26em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
+  h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.02; margin: 0; text-wrap: balance; }
+  h2 { font-size: clamp(1.65rem, 4.4vw, 2.6rem); letter-spacing: .01em; }
+  h3 { font-size: 1.02rem; letter-spacing: .015em; line-height: 1.25; }
+  p { color: var(--text-soft); }
+  .lede { font-size: clamp(1rem, 1.4vw, 1.12rem); max-width: 60ch; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .6rem;
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: 1.1875rem;      /* 19px bold = large text for contrast */
+    letter-spacing: .01em;
+    line-height: 1;
+    padding: 1rem 1.6rem;
+    border-radius: var(--r-lg);
+    border: 1px solid transparent;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease;
+    white-space: nowrap;
+  }
+  .btn svg { flex: none; }
+  .btn-primary {
+    color: #FFFFFF;
+    background: linear-gradient(180deg, #E94560 0%, #CE3550 100%);
+    box-shadow: 0 12px 34px -12px rgba(233,69,96,.85), inset 0 1px 0 rgba(255,255,255,.18);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 18px 42px -14px rgba(233,69,96,.95), inset 0 1px 0 rgba(255,255,255,.22); }
+  .btn-ghost {
+    color: var(--text);
+    background: rgba(35,35,39,.6);
+    border-color: var(--border);
+  }
+  .btn-ghost:hover { border-color: #4a4a52; background: var(--surface-2); transform: translateY(-2px); }
+  .btn-block { width: 100%; }
+  .btn:focus-visible, a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 3px;
+    border-radius: var(--r-sm);
+  }
+
+  .btn-note {
+    margin: .9rem 0 0;
+    font-size: .84rem;
+    color: var(--text-dim);
+    letter-spacing: .01em;
+  }
+  .btn-note b { color: var(--text-soft); font-weight: 700; }
+
+  /* ---------- Nav ---------- */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(14,14,16,.78);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; height: 62px; }
+  .brand {
+    font-family: var(--display);
+    font-size: 1.32rem;
+    letter-spacing: .06em;
+    text-decoration: none;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+  }
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    flex: none;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.07), 0 6px 14px -6px rgba(0,0,0,.9);
+  }
+  .nav-links { display: flex; align-items: center; gap: 1.35rem; }
+  .nav-links a {
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--text-soft);
+    text-decoration: none;
+    letter-spacing: .01em;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-dl {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: .9rem;
+    font-weight: 800;
+    color: #fff;
+    background: linear-gradient(180deg, #E94560 0%, #CE3550 100%);
+    padding: .58rem 1rem;
+    border-radius: var(--r-sm);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .nav-dl:hover { box-shadow: 0 8px 22px -8px rgba(233,69,96,.9); }
+
+  /* ---------- Hero ---------- */
+  .hero { position: relative; overflow: hidden; padding: clamp(2.8rem, 7vw, 6rem) 0 clamp(2.6rem, 6vw, 5rem); }
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 130%;
+    pointer-events: none;
+    background:
+      radial-gradient(48% 46% at 16% 22%, rgba(233,69,96,.22) 0%, rgba(233,69,96,0) 70%),
+      radial-gradient(42% 44% at 88% 12%, rgba(78,161,255,.16) 0%, rgba(78,161,255,0) 72%),
+      radial-gradient(60% 50% at 60% 100%, rgba(62,207,142,.07) 0%, rgba(62,207,142,0) 70%);
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(46,46,51,.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(46,46,51,.5) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 78%);
+    -webkit-mask-image: radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 78%);
+    opacity: .5;
+  }
+  .hero-grid {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1.05fr .95fr;
+    gap: clamp(2rem, 5vw, 4rem);
+    align-items: center;
+  }
+  /* Prevent grid/flex blow-out from fixed-width imagery. */
+  .hero-copy, .hero-art, .feature-copy, .feature-art { min-width: 0; }
+  .hero h1 {
+    font-size: clamp(3.6rem, 13vw, 8.5rem);
+    letter-spacing: .015em;
+    line-height: .9;
+    margin: 0 0 1rem;
+    background: linear-gradient(180deg, #FFFFFF 0%, #E9E9EE 42%, #8E8E97 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* Fallback if background-clip is unsupported */
+    -webkit-text-fill-color: transparent;
+  }
+  @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+    .hero h1 { color: var(--text); -webkit-text-fill-color: currentColor; background: none; }
+  }
+  .hero-tag {
+    font-size: clamp(1.15rem, 2vw, 1.5rem);
+    font-weight: 700;
+    color: var(--text);
+    margin: .2rem 0 .9rem;
+    line-height: 1.3;
+    max-width: 24ch;
+    text-wrap: balance;
+  }
+  .hero .lede { margin: 0 0 1.9rem; }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; }
+
+  .hero-art {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: clamp(.6rem, 2vw, 1.25rem);
+    padding: 1rem 0;
+  }
+  .hero-art .phone { width: clamp(150px, 42vw, 310px); }
+  .hero-art .phone:first-child { transform: rotate(-2.4deg) translateY(14px); }
+  .hero-art .phone:last-child { transform: rotate(2.2deg) translateY(-14px); }
+  .hero-art .phone { transition: transform .5s cubic-bezier(.2,.7,.2,1); }
+  .hero-art:hover .phone:first-child { transform: rotate(-3.6deg) translateY(6px); }
+  .hero-art:hover .phone:last-child { transform: rotate(3.4deg) translateY(-22px); }
+
+  /* ---------- Ticker ---------- */
+  .ticker {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+    padding: .85rem 0;
+  }
+  .ticker-track { display: flex; width: max-content; animation: marquee 34s linear infinite; }
+  .ticker-group { display: flex; align-items: center; gap: 2.4rem; padding-right: 2.4rem; }
+  .ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    font-size: .82rem;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    white-space: nowrap;
+  }
+  .ticker-item::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .ticker-item:nth-child(2n)::before { background: var(--accent-2); }
+  .ticker-item:nth-child(3n)::before { background: var(--good); }
+  @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* ---------- Sections ---------- */
+  section { position: relative; }
+  .section { padding: clamp(3.2rem, 8vw, 6rem) 0; }
+  .section-head { max-width: 780px; margin-bottom: clamp(2rem, 5vw, 3.5rem); }
+  .section-head .lede { margin-top: 1rem; max-width: 62ch; }
+
+  .feature {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: clamp(2.2rem, 6vw, 5rem);
+    padding: clamp(2.2rem, 6vw, 4.2rem) 0;
+  }
+  .feature + .feature { border-top: 1px solid var(--border); }
+  .feature.flip .feature-copy { order: 2; }
+  .feature.flip .feature-art { order: 1; }
+  .feature-copy { max-width: 47ch; }
+  .feature-copy .lede { margin: 1rem 0 1.5rem; }
+
+  .chips { list-style: none; display: flex; flex-wrap: wrap; gap: .5rem; padding: 0; margin: 0; }
+  .chip {
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    color: var(--text-soft);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: .42rem .7rem;
+  }
+
+  .feature-art { display: flex; justify-content: center; align-items: flex-end; gap: clamp(.8rem, 2.5vw, 1.6rem); }
+  .feature-art .phone { width: clamp(190px, 34vw, 280px); }
+  .feature-art .phone:nth-child(2) { transform: translateY(1.6rem) rotate(1.6deg); }
+
+  /* ---------- Wide feature (source flow) ---------- */
+  .feature--wide { grid-template-columns: 1fr; align-items: start; gap: clamp(1.8rem, 4vw, 2.8rem); }
+  .feature--wide .feature-copy { max-width: 780px; }
+  .feature--wide .feature-art { align-items: flex-start; flex-wrap: wrap; row-gap: clamp(2.4rem, 6vw, 3.2rem); }
+  .feature--wide .feature-art .phone { width: clamp(150px, 21vw, 238px); }
+  .feature--wide .feature-art .phone:nth-child(1) { transform: translateY(0); }
+  .feature--wide .feature-art .phone:nth-child(2) { transform: translateY(1.3rem); }
+  .feature--wide .feature-art .phone:nth-child(3) { transform: translateY(2.6rem); }
+
+  .feature--wide .phone { position: relative; }
+  .step-num {
+    position: absolute;
+    top: -0.85rem;
+    left: -0.6rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--r-sm);
+    background: var(--accent);
+    color: #0E0E10;
+    font-family: var(--display);
+    font-size: .72rem;
+    letter-spacing: .04em;
+    box-shadow: 0 8px 18px -8px rgba(233,69,96,.95), 0 0 0 3px var(--bg);
+  }
+  .feature--wide .phone:nth-child(2) .step-num { background: var(--accent-2); }
+  .feature--wide .phone:nth-child(3) .step-num { background: var(--good); }
+
+  /* ---------- Curated shelf ---------- */
+  .shelf {
+    width: min(720px, 100%);
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow: 0 34px 64px -36px rgba(0,0,0,.95), 0 4px 16px -8px rgba(0,0,0,.8);
+  }
+  /* Shows only the "All Time Classics" row from the home screen inset. */
+  .shelf img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 747 / 366;
+    object-fit: cover;
+    object-position: 50% 72%;
+  }
+  .shelf-cap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .85rem 1.15rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .shelf-cap strong { font-family: var(--display); font-weight: 400; font-size: .82rem; letter-spacing: .06em; color: var(--text); }
+  .shelf-cap span { font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+
+  /* ---------- Phone mockup ---------- */
+  .phone { margin: 0; display: flex; flex-direction: column; align-items: center; }
+  .phone-frame {
+    position: relative;
+    width: 100%;
+    padding: 7px;
+    border-radius: 34px;
+    background: #050506;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-phone);
+  }
+  .phone-frame::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .phone-screen { position: relative; border-radius: 27px; overflow: hidden; background: var(--bg); }
+  .phone-screen img { width: 100%; height: auto; border-radius: 27px; }
+  .phone figcaption {
+    margin-top: .85rem;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  /* Covers the debug block (private LAN signalling URL) in shot-12. */
+  .redact { position: absolute; left: 0; right: 0; top: 61.5%; height: 8%; background: #0E0E10; }
+
+  /* ---------- Specs ---------- */
+  .specs { border-top: 1px solid var(--border); background: linear-gradient(180deg, rgba(26,26,29,.7) 0%, rgba(14,14,16,0) 55%); }
+  .spec-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .spec {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    padding: 1.4rem 1.4rem 1.5rem;
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .spec:hover { border-color: #41414a; transform: translateY(-3px); }
+  .spec h3 { color: var(--text); margin-bottom: .55rem; }
+  .spec p { margin: 0; font-size: .93rem; line-height: 1.6; }
+  .spec .num {
+    display: block;
+    font-family: var(--display);
+    font-size: .8rem;
+    color: var(--accent);
+    letter-spacing: .12em;
+    margin-bottom: .7rem;
+  }
+  .spec:nth-child(3n-1) .num { color: var(--accent-2); }
+  .spec:nth-child(3n) .num { color: var(--good); }
+
+  /* ---------- Closing CTA ---------- */
+  .closing { padding: clamp(3rem, 8vw, 6rem) 0 clamp(3rem, 7vw, 5.5rem); }
+  .cta-card {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    padding: clamp(2rem, 6vw, 4rem);
+    text-align: center;
+  }
+  .cta-card::before {
+    content: "";
+    position: absolute;
+    inset: -40% -10% auto -10%;
+    height: 120%;
+    pointer-events: none;
+    background: radial-gradient(45% 60% at 50% 0%, rgba(233,69,96,.26) 0%, rgba(233,69,96,0) 72%);
+  }
+  .cta-card > * { position: relative; }
+  .cta-card h2 { font-size: clamp(1.9rem, 5.5vw, 3.1rem); }
+  .cta-card .lede { margin: 1rem auto 1.9rem; color: var(--text-soft); }
+  .cta-actions { display: flex; flex-direction: column; align-items: center; }
+  .cta-actions .btn-primary { min-width: min(360px, 100%); }
+  .cta-specs { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; margin-top: 1.6rem; padding: 0; list-style: none; }
+  .cta-specs li {
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    color: var(--text-soft);
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: .45rem .75rem;
+  }
+  .cta-note { margin: 1.6rem 0 0; font-size: .86rem; color: var(--text-dim); }
+
+  /* ---------- Footer ---------- */
+  .footer { border-top: 1px solid var(--border); background: #0B0B0D; padding: 3rem 0 2.6rem; }
+  .footer-grid { display: flex; flex-wrap: wrap; gap: 2rem; justify-content: space-between; align-items: flex-start; }
+  .footer-brand { max-width: 42ch; }
+  .footer-brand .brand { font-size: 1.5rem; }
+  .footer-brand .brand-mark { width: 34px; height: 34px; }
+  .footer-brand p { margin: .9rem 0 0; font-size: .92rem; color: var(--text-dim); }
+  .footer-cta { display: flex; flex-direction: column; align-items: flex-start; gap: .8rem; }
+  .footer-bottom {
+    margin-top: 2.4rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem 1.4rem;
+    justify-content: space-between;
+    font-size: .82rem;
+    color: var(--text-dim);
+  }
+  .footer-bottom a { color: var(--text-soft); font-weight: 700; text-decoration: none; }
+  .footer-bottom a:hover { color: var(--text); text-decoration: underline; }
+
+  /* ---------- Scroll reveal ---------- */
+  .js .reveal { opacity: 0; transform: translateY(26px); }
+  .js .reveal.in {
+    opacity: 1;
+    transform: none;
+    transition: opacity .75s cubic-bezier(.2,.7,.2,1), transform .75s cubic-bezier(.2,.7,.2,1);
+    transition-delay: var(--d, 0ms);
+  }
+  .js .hero-copy > * { opacity: 0; transform: translateY(22px); animation: rise .8s cubic-bezier(.2,.7,.2,1) forwards; }
+  .js .hero-copy > *:nth-child(1) { animation-delay: .05s; }
+  .js .hero-copy > *:nth-child(2) { animation-delay: .13s; }
+  .js .hero-copy > *:nth-child(3) { animation-delay: .21s; }
+  .js .hero-copy > *:nth-child(4) { animation-delay: .29s; }
+  .js .hero-copy > *:nth-child(5) { animation-delay: .37s; }
+  .js .hero-art { opacity: 0; transform: translateY(30px) scale(.98); animation: rise .95s cubic-bezier(.2,.7,.2,1) .22s forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .js .reveal, .js .hero-copy > *, .js .hero-art { opacity: 1 !important; transform: none !important; animation: none !important; transition: none !important; }
+    .ticker-track { animation: none; }
+    .phone, .spec, .btn { transition: none !important; }
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 2.6rem; }
+    .hero-tag { max-width: none; }
+    .hero-art { order: 2; }
+    .spec-grid { grid-template-columns: repeat(2, 1fr); }
+    /* Feature rows stay two-up here, so keep each phone column-safe. */
+    .feature-art .phone { width: clamp(140px, 19vw, 200px); }
+    .feature--wide .feature-art .phone { width: clamp(130px, 27vw, 220px); }
+  }
+  @media (max-width: 760px) {
+    .nav-links a:not(.nav-dl) { display: none; }
+    .feature { grid-template-columns: 1fr; gap: 2rem; }
+    .feature.flip .feature-copy { order: 1; }
+    .feature.flip .feature-art { order: 2; }
+    .feature-copy { max-width: none; }
+    .feature-art .phone { width: clamp(120px, 41vw, 230px); }
+    .feature--wide .feature-art .phone { width: clamp(120px, 41vw, 230px); }
+    .feature--wide .feature-art .phone:nth-child(2),
+    .feature--wide .feature-art .phone:nth-child(3) { transform: none; }
+    .footer-grid { flex-direction: column; }
+    .footer-cta { width: 100%; }
+    .footer-cta .btn { width: 100%; }
+  }
+  @media (max-width: 560px) {
+    body { font-size: 15.5px; }
+    .spec-grid { grid-template-columns: 1fr; }
+    .btn { width: 100%; }
+    .hero-cta { flex-direction: column; align-items: stretch; }
+    .hero-art { gap: 2vw; }
+    .hero-art .phone { width: 43vw; }
+    .hero-art .phone figcaption { font-size: .6rem; letter-spacing: .14em; }
+    /* Wider crop so the shelf stays legible on small screens. */
+    .shelf img { aspect-ratio: 3 / 2; object-position: 50% 76%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top"><img class="brand-mark" src="mofy-icon.png" alt="" width="192" height="192">MOFY</a>
+    <nav class="nav-links" aria-label="Page sections">
+      <a href="#features">Features</a>
+      <a href="#sources">Sources</a>
+      <a href="#curated">Vintage</a>
+      <a href="#under-the-hood">Under the hood</a>
+      <a class="nav-dl" href="https://github.com/ikouchiha47/mofy/releases/latest/download/app-release.apk" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 18v1.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download APK
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Personal Android app · Sideloaded</p>
+        <h1 id="hero-title">MOFY</h1>
+        <p class="hero-tag">A private cinema for the movies and TV you already own.</p>
+        <p class="lede">Browse, search, and watch your own library in a dark, fast interface that runs entirely on your phone. No accounts, no cloud, no tracking — just your collection.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/ikouchiha47/mofy/releases/latest/download/app-release.apk" rel="noopener">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 18v1.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download APK
+          </a>
+          <a class="btn btn-ghost" href="#features">See what's inside</a>
+        </div>
+        <p class="btn-note"><b>Android 8.0+ (minSdk 26)</b> · arm64 · ~122 MB · installs directly from GitHub Releases. Not on the Play Store.</p>
+      </div>
+
+      <div class="hero-art">
+        <figure class="phone">
+          <div class="phone-frame">
+            <div class="phone-screen">
+              <img src="images/shot-11.png" alt="Mofy home screen with horizontal rows for Continue Watching, Recently Added, All Time Classics, and New Releases." width="747" height="1600" fetchpriority="high" decoding="async">
+            </div>
+          </div>
+          <figcaption>Home</figcaption>
+        </figure>
+        <figure class="phone">
+          <div class="phone-frame">
+            <div class="phone-screen">
+              <img src="images/shot-13.png" alt="Mofy Discover screen showing the query “dark psychological thriller” and matching results such as Seven, The Sixth Sense, and The Silence of the Lambs." width="719" height="1600" fetchpriority="high" decoding="async">
+            </div>
+          </div>
+          <figcaption>Discover</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TICKER ============ -->
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <div class="ticker-group">
+        <span class="ticker-item">On-device semantic search</span>
+        <span class="ticker-item">YouTube playback</span>
+        <span class="ticker-item">Vintage picks</span>
+        <span class="ticker-item">Continue Watching</span>
+        <span class="ticker-item">Watch Together</span>
+        <span class="ticker-item">libVLC &amp; torrents</span>
+        <span class="ticker-item">No accounts</span>
+        <span class="ticker-item">TMDB release feed</span>
+        <span class="ticker-item">Private by design</span>
+      </div>
+      <div class="ticker-group">
+        <span class="ticker-item">On-device semantic search</span>
+        <span class="ticker-item">YouTube playback</span>
+        <span class="ticker-item">Vintage picks</span>
+        <span class="ticker-item">Continue Watching</span>
+        <span class="ticker-item">Watch Together</span>
+        <span class="ticker-item">libVLC &amp; torrents</span>
+        <span class="ticker-item">No accounts</span>
+        <span class="ticker-item">TMDB release feed</span>
+        <span class="ticker-item">Private by design</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FEATURES ============ -->
+  <section class="section" id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="eyebrow">What it does</p>
+        <h2 id="features-title">Built for one person</h2>
+        <p class="lede">Mofy is a single-user media app, made for exactly one person: you. There is no sign-up, no shared account, and no recommendation engine trying to sell you something — just your library, your progress, and the things you actually want to watch.</p>
+      </div>
+
+      <!-- Home -->
+      <article class="feature reveal">
+        <div class="feature-copy">
+          <p class="eyebrow">Home</p>
+          <h3>Pick up exactly where you left off</h3>
+          <p class="lede">Home keeps Continue Watching, Recently Added, All Time Classics, and New Releases on one screen — the first two drawn from your own library, the classics from a curated shelf that comes with the app. Watch progress is tracked as you go, so whatever you were part-way through is always one tap away.</p>
+          <ul class="chips">
+            <li class="chip">Continue Watching</li>
+            <li class="chip">Recently Added</li>
+            <li class="chip">New Releases</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="phone">
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-11.png" alt="Mofy home screen with rows of movie posters, including Continue Watching and New Releases." width="747" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Home</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Discover -->
+      <article class="feature flip reveal">
+        <div class="feature-copy">
+          <p class="eyebrow">Discover</p>
+          <h3>Search by mood, not just by title</h3>
+          <p class="lede">Type something like “dark psychological thriller” and Mofy searches by meaning instead of exact names. The embedding model and vector index run on your phone, so nothing you search for leaves the device. A small language model also reads genre, mood, date, and rating from what you type.</p>
+          <ul class="chips">
+            <li class="chip">EmbeddingGemma-300m</li>
+            <li class="chip">sqlite-vec KNN</li>
+            <li class="chip">Runs on-device</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="phone">
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-13.png" alt="Mofy Discover screen with a natural-language query and a list of matching movies and shows with year and rating." width="719" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Discover</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Details -->
+      <article class="feature reveal">
+        <div class="feature-copy">
+          <p class="eyebrow">Details</p>
+          <h3>Everything about a title, without the clutter</h3>
+          <p class="lede">Poster, synopsis, genres, year, and type sit above a clear Play button, with source linking and a shortcut into Watch Together. Rate what you have seen with a quick thumbs up or down, and Mofy remembers it.</p>
+          <ul class="chips">
+            <li class="chip">Movies &amp; TV</li>
+            <li class="chip">Ratings</li>
+            <li class="chip">Watch Party shortcut</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="phone">
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-01.png" alt="Mofy detail screen for a movie, showing poster, title, year, genres, synopsis, rating buttons, a red Play button, linking status, and Watch Party." width="749" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Details</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Sources -->
+      <article class="feature feature--wide reveal" id="sources">
+        <div class="feature-copy">
+          <p class="eyebrow">Sources</p>
+          <h3>Link a source, then press play</h3>
+          <p class="lede">Mofy plays what you point it at. Pick a single video file, choose a whole folder, or link a title from YouTube. YouTube videos are resolved on the device and play inside Mofy itself — no browser window, no WebView. libVLC handles the formats, torrent links included, and Mofy never downloads anything on its own.</p>
+          <ul class="chips">
+            <li class="chip">Local files</li>
+            <li class="chip">Folders</li>
+            <li class="chip">YouTube</li>
+            <li class="chip">Torrent links</li>
+            <li class="chip">libVLC</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="phone">
+            <span class="step-num" aria-hidden="true">01</span>
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-15.png" alt="Mofy detail screen for Star Wars: Episode V - The Empire Strikes Back, showing the poster, synopsis, and a Link button next to Watch Party." width="746" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Tap Link on a title</figcaption>
+          </figure>
+          <figure class="phone">
+            <span class="step-num" aria-hidden="true">02</span>
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-14.png" alt="Mofy Link screen offering Pick a single video file, Pick a folder, and Link from YouTube." width="748" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Pick a file, folder or YouTube</figcaption>
+          </figure>
+          <figure class="phone">
+            <span class="step-num" aria-hidden="true">03</span>
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-16.png" alt="Mofy YouTube search results for a full movie query, listing trailers and a full-length result with their durations." width="750" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Search, then pick a resolution</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Library -->
+      <article class="feature flip reveal">
+        <div class="feature-copy">
+          <p class="eyebrow">Library</p>
+          <h3>A library that stays yours</h3>
+          <p class="lede">Import files from your device or look titles up on TMDB, then sort and filter the whole catalog by genre, type, or date. Everything is stored locally, on storage you control.</p>
+          <ul class="chips">
+            <li class="chip">Import from device</li>
+            <li class="chip">TMDB lookup</li>
+            <li class="chip">Filters &amp; sort</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="phone">
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-02.png" alt="Mofy Library screen listing saved movies with posters, type labels, and dates added, above an All / Movies / TV filter and a Filters button." width="751" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>Library</figcaption>
+          </figure>
+          <figure class="phone">
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-03.png" alt="Mofy import screen searching TMDB by title and showing a matching result ready to save to the library." width="749" height="1600" loading="lazy" decoding="async">
+              </div>
+            </div>
+            <figcaption>TMDB lookup</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Curated classics -->
+      <article class="feature feature--wide reveal" id="curated">
+        <div class="feature-copy">
+          <p class="eyebrow">Curated</p>
+          <h3>A shelf of classics, already picked</h3>
+          <p class="lede">Mofy arrives with a curated collection of vintage and classic films — rows like Vintage Picks and All Time Classics that are chosen by hand, not generated from whatever happens to be sitting on your phone. They live alongside your own imports, so there is always something to watch before you add a single file.</p>
+          <ul class="chips">
+            <li class="chip">Vintage Picks</li>
+            <li class="chip">All Time Classics</li>
+            <li class="chip">Hand-picked</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="shelf">
+            <img src="images/shot-11.png" alt="The All Time Classics row on Mofy's home screen, showing poster artwork for classic films with their titles and years." width="747" height="1600" loading="lazy" decoding="async">
+            <figcaption class="shelf-cap"><strong>Vintage &amp; Classics</strong><span>Hand-picked, on Home</span></figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <!-- Watch Together -->
+      <article class="feature reveal">
+        <div class="feature-copy">
+          <p class="eyebrow">Watch Together</p>
+          <h3>Same film. Same moment.</h3>
+          <p class="lede">Start a room, share the code or scan the QR, and playback stays in sync over a WebRTC data channel. There is no central server in the middle — the room is just the two of you.</p>
+          <ul class="chips">
+            <li class="chip">Room code &amp; QR invite</li>
+            <li class="chip">WebRTC data channel</li>
+          </ul>
+        </div>
+        <div class="feature-art">
+          <figure class="phone">
+            <div class="phone-frame">
+              <div class="phone-screen">
+                <img src="images/shot-12.png" alt="Mofy Watch Together screen showing a room code, a QR invite code, a waiting message, and a Share invite button." width="719" height="1600" loading="lazy" decoding="async">
+                <span class="redact" aria-hidden="true"></span>
+              </div>
+            </div>
+            <figcaption>Watch Together</figcaption>
+          </figure>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ SPECS ============ -->
+  <section class="section specs" id="under-the-hood" aria-labelledby="specs-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="eyebrow">Under the hood</p>
+        <h2 id="specs-title">Everything runs on the phone</h2>
+        <p class="lede">The interesting parts are local: models, index, and player all live on the device. Nothing is sent off to be processed somewhere else.</p>
+      </div>
+      <div class="spec-grid reveal">
+        <article class="spec">
+          <span class="num">01</span>
+          <h3>Semantic search</h3>
+          <p>EmbeddingGemma-300m embeddings paired with a sqlite-vec KNN index let you search the catalog by meaning, entirely on-device.</p>
+        </article>
+        <article class="spec">
+          <span class="num">02</span>
+          <h3>Facet detection</h3>
+          <p>A distilbert ONNX model pulls genre, mood, date, and rating out of plain language, so filters follow what you described.</p>
+        </article>
+        <article class="spec">
+          <span class="num">03</span>
+          <h3>Playback</h3>
+          <p>libVLC handles the formats. Sources include local files and folders, YouTube videos resolved and played in-app with no WebView, and torrent links.</p>
+        </article>
+        <article class="spec">
+          <span class="num">04</span>
+          <h3>Watch Together</h3>
+          <p>Synced playback carried over a WebRTC data channel between the people in the room — no central relay server.</p>
+        </article>
+        <article class="spec">
+          <span class="num">05</span>
+          <h3>Release feed</h3>
+          <p>New-release lists are synced from TMDB: upcoming, now playing, and on the air, ready on the Home screen.</p>
+        </article>
+        <article class="spec">
+          <span class="num">06</span>
+          <h3>Private by design</h3>
+          <p>Everything runs on-device. There are no API-based LLM calls anywhere in the app, and no account to sign in to.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CLOSING CTA ============ -->
+  <section class="closing" id="download" aria-labelledby="cta-title">
+    <div class="wrap">
+      <div class="cta-card reveal">
+        <p class="eyebrow">Get Mofy</p>
+        <h2 id="cta-title">Ready when you are</h2>
+        <p class="lede">Download the APK, install it straight on your Android phone, and start watching — your own library, a curated classic, or a title linked from YouTube. It is a direct download: no store, no account, no waiting.</p>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="https://github.com/ikouchiha47/mofy/releases/latest/download/app-release.apk" rel="noopener">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 18v1.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download APK
+          </a>
+        </div>
+        <ul class="cta-specs">
+          <li>Android 8.0+ · minSdk 26</li>
+          <li>arm64</li>
+          <li>~122 MB</li>
+          <li>Direct APK download</li>
+        </ul>
+        <p class="cta-note">Mofy is a personal project, not a Play Store app. You install it yourself.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top"><img class="brand-mark" src="mofy-icon.png" alt="" width="192" height="192">MOFY</a>
+        <p>A personal Android media app for browsing, searching, and watching movies and TV — your own library, plus a curated shelf of classics and playback from local files or YouTube. Built for one person, shared in case you want it too.</p>
+      </div>
+      <div class="footer-cta">
+        <a class="btn btn-primary" href="https://github.com/ikouchiha47/mofy/releases/latest/download/app-release.apk" rel="noopener">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 18v1.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download APK
+        </a>
+        <p class="btn-note" style="margin:0">Android 8.0+ · arm64 · ~122 MB</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Mofy · Personal project, not on the Play Store.</span>
+      <span>Dark-only by design.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var items = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) {
+      items.forEach(function (el) { el.classList.add('in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    items.forEach(function (el, i) { el.style.setProperty('--d', (i % 3) * 70 + 'ms'); io.observe(el); });
+  })();
+</script>
+</body>
+</html>

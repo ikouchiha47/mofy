@@ -62,6 +62,10 @@ object PushedRoute {
     // watch progress back onto the right LibraryItem row.
     const val SOLO_PLAY = "solo_play/{libraryItemId}/{uri}/{subtitleUri}/{subtitle2Uri}"
 
+    // TMDB API key onboarding - opens a domain-locked WebView to the TMDB
+    // login/docs page so the user can copy their API Read Access Token.
+    const val TMDB_KEY_WEBVIEW = "tmdb_key_webview"
+
     fun discover(source: String = "ALL", sort: String = "MOST_VOTED", type: String = "ANY", decades: List<Int> = emptyList()) =
         "discover/$source/$sort/$type/${decades.takeIf { it.isNotEmpty() }?.joinToString(",") ?: "none"}"
     fun editSite(siteName: String) = "edit_site/$siteName"

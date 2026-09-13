@@ -41,7 +41,10 @@ import com.mofy.app.workers.CatalogSyncWorker
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(contentPadding: PaddingValues) {
+fun SettingsScreen(
+    contentPadding: PaddingValues,
+    onOpenTmdbKeyPage: () -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val modelDownloadRepository = remember {
@@ -66,15 +69,37 @@ fun SettingsScreen(contentPadding: PaddingValues) {
     Column(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
         Text("TMDB settings", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 
+        Text(
+            "Mofy ships with a shared default TMDB key. You can bring your own free key instead — add it below to use your own TMDB account.",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         OutlinedTextField(
             value = apiKeyInput,
             onValueChange = {
                 apiKeyInput = it
                 TmdbSettings.setApiKeyOverride(it.ifBlank { null })
             },
-            label = { Text("TMDB API key (blank = default)") },
+            label = { Text("TMDB API key") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
+
+        Text(
+            "You'll need a TMDB account. The button below opens TMDB — log in, then copy the \"API Read Access Token\" from the API settings page and paste it above.",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        OutlinedButton(
+            onClick = onOpenTmdbKeyPage,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.padding(16.dp),
+        ) {
+            Text("Get a free TMDB API key")
+        }
 
         OutlinedButton(
             onClick = { zonePickerOpen = true },
@@ -130,6 +155,7 @@ fun SettingsScreen(contentPadding: PaddingValues) {
                     ModelDownloadRow(
                         state = state,
                         onRetry = { scope.launch { modelDownloadRepository.retry(state) } },
+                        onRedownload = { scope.launch { modelDownloadRepository.redownload(state) } },
                     )
                 }
             }
@@ -138,12 +164,16 @@ fun SettingsScreen(contentPadding: PaddingValues) {
 }
 
 @Composable
-private fun ModelDownloadRow(state: ModelDownloadState, onRetry: () -> Unit) {
+private fun ModelDownloadRow(
+    state: ModelDownloadState,
+    onRetry: () -> Unit,
+    onRedownload: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.padding(end = 8.dp)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
             Text(state.modelKey)
             val statusText = when (state.status) {
                 "QUEUED" -> "Preparing…"
@@ -158,9 +188,12 @@ private fun ModelDownloadRow(state: ModelDownloadState, onRetry: () -> Unit) {
             }
             Text(statusText, style = MaterialTheme.typography.labelSmall)
         }
-        if (state.status == "FAILED") {
-            OutlinedButton(onClick = onRetry, shape = MaterialTheme.shapes.small) {
+        when (state.status) {
+            "FAILED" -> OutlinedButton(onClick = onRetry, shape = MaterialTheme.shapes.small) {
                 Text("Retry")
+            }
+            "COMPLETE" -> OutlinedButton(onClick = onRedownload, shape = MaterialTheme.shapes.small) {
+                Text("Re-download")
             }
         }
     }

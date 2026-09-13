@@ -84,6 +84,20 @@ class ModelDownloadRepository(
     suspend fun retry(state: ModelDownloadState): Boolean =
         ensureDownloaded(state.modelKey, state.url, File(state.destPath), state.modelKey)
 
+    /**
+     * Forces a re-download even if the current state is COMPLETE. Deletes the
+     * existing model file and its .tmp sibling, then starts a fresh download
+     * and waits for a terminal state. Used by Settings' "Re-download" button
+     * for COMPLETE rows (e.g. user suspects a corrupt model).
+     */
+    suspend fun redownload(state: ModelDownloadState): Boolean {
+        val dest = File(state.destPath)
+        dest.delete()
+        File(dest.parent, "${dest.name}.tmp").delete()
+        startDownload(state.modelKey, state.url, dest, state.modelKey)
+        return awaitTerminal(state.modelKey)
+    }
+
     private fun startDownload(modelKey: String, url: String, dest: File, title: String) {
         val intent = Intent(context, ModelDownloadService::class.java).apply {
             putExtra(ModelDownloadService.EXTRA_MODEL_KEY, modelKey)

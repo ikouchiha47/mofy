@@ -104,78 +104,98 @@ fun YoutubeLinkPicker(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(contentPadding)
-            .padding(16.dp),
+            .padding(contentPadding),
     ) {
-        if (selected == null) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Search YouTube") },
-                    singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Search,
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onSearch = {
-                            if (query.isBlank()) return@KeyboardActions
-                            searching = true
-                            searchError = null
-                        },
-                    ),
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = onCancel) { Icon(AppIcons.Close, contentDescription = "Cancel") }
+        // MainActivity owns the app's single Scaffold topBar, so a screen
+        // hosted in a Dialog never sees it and has to reproduce it locally.
+        // Metrics/styles mirror Material3's TopAppBar: a 64dp bar, a 48dp
+        // icon button inset 4dp from the edge, the title inset 12dp after
+        // it, and the titleLarge style (Bungee, all caps) every screen uses.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp),
+        ) {
+            IconButton(onClick = onCancel) {
+                Icon(AppIcons.Close, contentDescription = "Close")
             }
-
-            LaunchedEffect(searching) {
-                if (!searching) return@LaunchedEffect
-                results = try {
-                    withContext(Dispatchers.IO) { YoutubeSearchClient.search(query) }
-                } catch (e: Exception) {
-                    searchError = "Search failed: ${e.message}"
-                    emptyList()
+            Text(
+                "YouTube",
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 12.dp, end = 16.dp),
+            )
+        }
+        Column(modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp)) {
+            if (selected == null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = { Text("Search YouTube") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onSearch = {
+                                if (query.isBlank()) return@KeyboardActions
+                                searching = true
+                                searchError = null
+                            },
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
-                searching = false
-            }
 
-            if (searching) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else if (searchError != null) {
-                Text(searchError!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
-                    items(results, key = { it.videoId }) { result ->
-                        SearchResultRow(result, onClick = { selected = result })
+                LaunchedEffect(searching) {
+                    if (!searching) return@LaunchedEffect
+                    results = try {
+                        withContext(Dispatchers.IO) { YoutubeSearchClient.search(query) }
+                    } catch (e: Exception) {
+                        searchError = "Search failed: ${e.message}"
+                        emptyList()
+                    }
+                    searching = false
+                }
+
+                if (searching) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (searchError != null) {
+                    Text(searchError!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+                        items(results, key = { it.videoId }) { result ->
+                            SearchResultRow(result, onClick = { selected = result })
+                        }
                     }
                 }
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                IconButton(onClick = { selected = null; resolutions = emptyList() }) {
-                    Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back to search")
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                    IconButton(onClick = { selected = null; resolutions = emptyList() }) {
+                        Icon(AppIcons.ArrowBackAutoMirrored, contentDescription = "Back to search")
+                    }
+                    Text(selected!!.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 }
-                Text(selected!!.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            }
-            when {
-                resolvingResolutions -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                resolutionError != null -> Text(resolutionError!!, color = MaterialTheme.colorScheme.error)
-                resolutions.isEmpty() -> Text("No resolutions found for this video.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> {
-                    Text("Pick a resolution", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
-                    LazyColumn {
-                        items(resolutions) { resolution ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onPicked(selected!!.videoId, resolution, selected!!.title, selected!!.thumbnailUrl)
-                                    }
-                                    .padding(vertical = 12.dp),
-                            ) {
-                                Text(resolution, style = MaterialTheme.typography.bodyMedium)
+                when {
+                    resolvingResolutions -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    resolutionError != null -> Text(resolutionError!!, color = MaterialTheme.colorScheme.error)
+                    resolutions.isEmpty() -> Text("No resolutions found for this video.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> {
+                        Text("Pick a resolution", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+                        LazyColumn {
+                            items(resolutions) { resolution ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onPicked(selected!!.videoId, resolution, selected!!.title, selected!!.thumbnailUrl)
+                                        }
+                                        .padding(vertical = 12.dp),
+                                ) {
+                                    Text(resolution, style = MaterialTheme.typography.bodyMedium)
+                                }
                             }
                         }
                     }
